@@ -1,0 +1,133 @@
+{
+  "generated_at": "2026-06-17T16:40:01.940820+00:00",
+  "input_dir": "data",
+  "output_dir": "data_usable",
+  "legacy_excluded": true,
+  "source_rows": {
+    "metadata": 127267,
+    "content": 127267,
+    "relationships": 657919
+  },
+  "output_rows": {
+    "current_metadata": 127267,
+    "current_content": 127267,
+    "current_relationships": 651966,
+    "rag_documents": 127267,
+    "rag_relationships": 651966,
+    "rag_chunks": 1203686
+  },
+  "join_quality": {
+    "metadata_unique_ids": 127267,
+    "content_unique_ids": 127267,
+    "content_missing_metadata": 0,
+    "metadata_missing_content": 0,
+    "relationship_doc_missing_metadata": 0,
+    "relationship_other_doc_missing_metadata": 0
+  },
+  "relationship_cleanup": {
+    "duplicate_rows_removed": 5685,
+    "self_links_removed": 268,
+    "relationship_labels": {
+      "Văn bản căn cứ": 412296,
+      "Văn bản dẫn chiếu": 62010,
+      "Văn bản hết hiệu lực": 38677,
+      "Văn bản quy định hết hiệu lực": 37586,
+      "Văn bản được HD, QĐ chi tiết": 32699,
+      "Văn bản HD, QĐ chi tiết": 32481,
+      "Văn bản bổ sung": 9962,
+      "Văn bản bị hết hiệu lực 1 phần": 5687,
+      "Văn bản được bổ sung": 5416,
+      "Văn bản được sửa đổi": 5086,
+      "Văn bản sửa đổi": 5057,
+      "Văn bản quy định hết hiệu lực 1 phần": 4653,
+      "Văn bản liên quan khác": 300,
+      "Văn bản bị đình chỉ 1 phần": 16,
+      "Văn bản đình chỉ 1 phần": 16,
+      "Văn bản đình chỉ": 12,
+      "Văn bản bị đình chỉ": 12
+    }
+  },
+  "content_quality": {
+    "empty_text_documents": 1,
+    "short_text_lt_80_documents": 89,
+    "bad_documents_csv": "data_usable/audit/bad_documents.csv",
+    "text_length_min": 0,
+    "text_length_median": 5115,
+    "text_length_mean": 11131.36,
+    "text_length_p95": 37298,
+    "text_length_max": 1270058
+  },
+  "metadata_quality": {
+    "null_counts": {
+      "id": 0,
+      "title": 0,
+      "so_ky_hieu": 0,
+      "ngay_ban_hanh": 0,
+      "loai_van_ban": 3,
+      "ngay_co_hieu_luc": 2153,
+      "ngay_het_hieu_luc": 96797,
+      "nguon_thu_thap": 52034,
+      "ngay_dang_cong_bao": 87837,
+      "nganh": 43833,
+      "linh_vuc": 87138,
+      "co_quan_ban_hanh": 253,
+      "chuc_danh": 146,
+      "nguoi_ky": 675,
+      "pham_vi": 9608,
+      "thong_tin_ap_dung": 127267,
+      "tinh_trang_hieu_luc": 180,
+      "ngay_ban_hanh_iso": 1,
+      "ngay_co_hieu_luc_iso": 2153,
+      "ngay_het_hieu_luc_iso": 96798,
+      "validity_code": 0
+    },
+    "validity_counts": {
+      "Hết hiệu lực toàn bộ": 69062,
+      "Còn hiệu lực": 52941,
+      "Hết hiệu lực một phần": 4402,
+      "Ngưng hiệu lực": 371,
+      "Không còn phù hợp": 226,
+      "": 180,
+      "Chưa có hiệu lực": 62,
+      "Chưa xác định": 21,
+      "Ngưng hiệu lực một phần": 2
+    },
+    "document_type_counts_top20": {
+      "Quyết định": 74394,
+      "Nghị quyết": 20941,
+      "Thông tư": 13824,
+      "Chỉ thị": 8131,
+      "Nghị định": 4546,
+      "Thông tư liên tịch": 2604,
+      "Sắc lệnh": 980,
+      "Luật": 532,
+      "Nghị Quyết": 436,
+      "Lệnh": 377,
+      "Pháp lệnh": 240,
+      "Văn bản liên quan": 43,
+      "Chương trình": 41,
+      "Công văn": 35,
+      "Nghị quyết liên tịch": 32,
+      "Văn bản hợp nhất": 27,
+      "Hiệp định": 23,
+      "Bộ luật": 16,
+      "Văn bản khác": 14,
+      "Thông tư liên bộ": 7
+    },
+    "invalid_date_counts": {
+      "ngay_ban_hanh": 1,
+      "ngay_co_hieu_luc": 2153,
+      "ngay_het_hieu_luc": 1
+    }
+  },
+  "chunking": {
+    "chunk_size": 1500,
+    "chunk_overlap": 200,
+    "documents_with_chunks": 127266,
+    "documents_without_chunks": 1,
+    "chunks_min_per_document": 1,
+    "chunks_median_per_document": 5.0,
+    "chunks_mean_per_document": 9.46,
+    "chunks_max_per_document": 1045
+  }
+}

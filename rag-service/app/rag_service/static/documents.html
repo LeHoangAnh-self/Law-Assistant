@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Law Assistant Documents</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --panel-soft: #eef3f8;
+        --line: #d8e0e9;
+        --text: #17202a;
+        --muted: #66788a;
+        --accent: #0f766e;
+        --accent-strong: #0b5f59;
+        --danger: #a43a3a;
+        --shadow: 0 10px 28px rgba(30, 43, 58, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        border-right: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .toolbar {
+        display: grid;
+        gap: 12px;
+        padding: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .toolbar h1 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.2;
+      }
+
+      .search-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .input {
+        width: 100%;
+        min-width: 0;
+        height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0 12px;
+        color: var(--text);
+        background: #fff;
+      }
+
+      .filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .button {
+        height: 40px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        padding: 0 14px;
+        color: #fff;
+        background: var(--accent);
+        cursor: pointer;
+      }
+
+      .button:hover,
+      .button:focus-visible {
+        background: var(--accent-strong);
+      }
+
+      .button.secondary {
+        border-color: var(--line);
+        color: var(--text);
+        background: #fff;
+      }
+
+      .button.secondary:hover,
+      .button.secondary:focus-visible {
+        background: var(--panel-soft);
+      }
+
+      .status {
+        min-height: 20px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .list {
+        display: grid;
+        align-content: start;
+        gap: 8px;
+        overflow: auto;
+        padding: 12px;
+      }
+
+      .document-row {
+        display: grid;
+        gap: 7px;
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        text-align: left;
+        color: var(--text);
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .document-row:hover,
+      .document-row:focus-visible,
+      .document-row.selected {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.18);
+      }
+
+      .document-title {
+        overflow-wrap: anywhere;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .document-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .pill {
+        border-radius: 999px;
+        padding: 3px 8px;
+        background: var(--panel-soft);
+      }
+
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 18px;
+        border-top: 1px solid var(--line);
+      }
+
+      .detail {
+        display: grid;
+        align-content: start;
+        gap: 18px;
+        padding: 28px;
+      }
+
+      .detail-panel {
+        display: grid;
+        gap: 18px;
+        max-width: 980px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 22px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .empty {
+        display: grid;
+        place-items: center;
+        min-height: calc(100vh - 56px);
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .detail h2 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.25;
+      }
+
+      .metadata {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+
+      .metadata div {
+        min-height: 62px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        background: #fbfcfe;
+      }
+
+      .metadata dt {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .metadata dd {
+        margin: 5px 0 0;
+        overflow-wrap: anywhere;
+        font-weight: 650;
+      }
+
+      .content {
+        max-height: 52vh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        white-space: pre-wrap;
+        line-height: 1.55;
+        background: #fbfcfe;
+      }
+
+      @media (max-width: 860px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          min-height: 50vh;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .detail {
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="sidebar" aria-label="Document search">
+        <form class="toolbar" id="searchForm">
+          <h1>Documents</h1>
+          <div class="search-row">
+            <input class="input" id="queryInput" name="query" type="search" placeholder="Search title or number" />
+            <button class="button" type="submit">Search</button>
+          </div>
+          <div class="filters">
+            <input class="input" id="typeInput" name="documentType" placeholder="Document type" />
+            <input class="input" id="statusInput" name="validityStatus" placeholder="Validity status" />
+          </div>
+          <div class="status" id="statusText" role="status"></div>
+        </form>
+
+        <div class="list" id="documentList" aria-live="polite"></div>
+
+        <div class="pagination">
+          <button class="button secondary" id="previousButton" type="button">Previous</button>
+          <span class="status" id="pageText"></span>
+          <button class="button secondary" id="nextButton" type="button">Next</button>
+        </div>
+      </section>
+
+      <section class="detail" id="detailPane" aria-label="Selected document">
+        <div class="empty">Choose a document from the database.</div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        page: 0,
+        size: 20,
+        selectedId: null,
+        lastPage: true,
+      };
+
+      const form = document.querySelector("#searchForm");
+      const queryInput = document.querySelector("#queryInput");
+      const typeInput = document.querySelector("#typeInput");
+      const statusInput = document.querySelector("#statusInput");
+      const statusText = document.querySelector("#statusText");
+      const pageText = document.querySelector("#pageText");
+      const list = document.querySelector("#documentList");
+      const detailPane = document.querySelector("#detailPane");
+      const previousButton = document.querySelector("#previousButton");
+      const nextButton = document.querySelector("#nextButton");
+
+      function setStatus(message, isError = false) {
+        statusText.textContent = message;
+        statusText.classList.toggle("error", isError);
+      }
+
+      function text(value) {
+        return value === null || value === undefined || value === "" ? "-" : String(value);
+      }
+
+      function documentLabel(legalDocument) {
+        return [legalDocument.documentNumber, legalDocument.documentType, legalDocument.issuedDate]
+          .filter(Boolean)
+          .join(" | ");
+      }
+
+      function searchParams() {
+        const params = new URLSearchParams({
+          query: queryInput.value.trim(),
+          page: String(state.page),
+          size: String(state.size),
+        });
+        if (typeInput.value.trim()) params.set("documentType", typeInput.value.trim());
+        if (statusInput.value.trim()) params.set("validityStatus", statusInput.value.trim());
+        return params;
+      }
+
+      async function loadDocuments() {
+        setStatus("Loading documents...");
+        list.replaceChildren();
+        const response = await fetch(`/api/documents?${searchParams()}`);
+        if (!response.ok) throw new Error(`Search failed with HTTP ${response.status}`);
+
+        const data = await response.json();
+        const documents = data.content ?? [];
+        state.lastPage = Boolean(data.last);
+        pageText.textContent = `Page ${(data.number ?? state.page) + 1} of ${data.totalPages || 1}`;
+        previousButton.disabled = state.page === 0;
+        nextButton.disabled = state.lastPage;
+
+        if (documents.length === 0) {
+          setStatus("No documents found.");
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        documents.forEach((legalDocument) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "document-row";
+          button.dataset.id = legalDocument.id;
+          button.setAttribute("aria-label", `Choose document ${legalDocument.id}`);
+          if (legalDocument.id === state.selectedId) button.classList.add("selected");
+
+          const title = document.createElement("div");
+          title.className = "document-title";
+          title.textContent = legalDocument.title ?? `Document ${legalDocument.id}`;
+
+          const meta = document.createElement("div");
+          meta.className = "document-meta";
+          const label = documentLabel(legalDocument) || `ID ${legalDocument.id}`;
+          label.split(" | ").forEach((item) => {
+            const pill = document.createElement("span");
+            pill.className = "pill";
+            pill.textContent = item;
+            meta.append(pill);
+          });
+
+          button.append(title, meta);
+          button.addEventListener("click", () => selectDocument(legalDocument.id));
+          fragment.append(button);
+        });
+
+        list.append(fragment);
+        setStatus(`${data.totalElements ?? documents.length} documents available.`);
+      }
+
+      async function selectDocument(id) {
+        state.selectedId = id;
+        document.querySelectorAll(".document-row").forEach((row) => {
+          row.classList.toggle("selected", Number(row.dataset.id) === Number(id));
+        });
+        detailPane.innerHTML = '<div class="empty">Loading document...</div>';
+
+        const response = await fetch(`/api/documents/${id}`);
+        if (!response.ok) throw new Error(`Detail failed with HTTP ${response.status}`);
+        const detail = await response.json();
+        renderDetail(detail);
+      }
+
+      function metadataItem(label, value) {
+        const wrapper = document.createElement("div");
+        const dt = document.createElement("dt");
+        const dd = document.createElement("dd");
+        dt.textContent = label;
+        dd.textContent = text(value);
+        wrapper.append(dt, dd);
+        return wrapper;
+      }
+
+      function renderDetail(detail) {
+        const legalDocument = detail.document ?? {};
+        const panel = document.createElement("article");
+        panel.className = "detail-panel";
+
+        const title = document.createElement("h2");
+        title.textContent = legalDocument.title ?? `Document ${legalDocument.id}`;
+
+        const metadata = document.createElement("dl");
+        metadata.className = "metadata";
+        metadata.append(
+          metadataItem("Document number", legalDocument.documentNumber),
+          metadataItem("Type", legalDocument.documentType),
+          metadataItem("Issued date", legalDocument.issuedDate),
+          metadataItem("Effective date", legalDocument.effectiveDate),
+          metadataItem("Validity", legalDocument.validityStatus),
+          metadataItem("Embedding", legalDocument.embeddingStatus),
+          metadataItem("Authority", legalDocument.issuingAuthority),
+          metadataItem("Source", legalDocument.source),
+        );
+
+        const content = document.createElement("div");
+        content.className = "content";
+        content.textContent = detail.contentText || "No text content stored for this document.";
+
+        panel.append(title, metadata, content);
+        detailPane.replaceChildren(panel);
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        state.page = 0;
+        try {
+          await loadDocuments();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+
+      previousButton.addEventListener("click", async () => {
+        if (state.page === 0) return;
+        state.page -= 1;
+        try {
+          await loadDocuments();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+
+      nextButton.addEventListener("click", async () => {
+        if (state.lastPage) return;
+        state.page += 1;
+        try {
+          await loadDocuments();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+
+      loadDocuments().catch((error) => setStatus(error.message, true));
+    </script>
+  </body>
+</html>

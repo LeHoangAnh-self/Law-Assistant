@@ -1,0 +1,36 @@
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs and crash reports
+*.log
+hs_err_pid*.log
+
+# Java / Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime outputs
+rag-service/evaluation/rag_eval_results.csv
+rag-service/evaluation/rag_eval_results.jsonl
+
+# Temporary local data folders
+data/
+data-backup/
+data_requires_update/
