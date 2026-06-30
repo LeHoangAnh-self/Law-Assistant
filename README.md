@@ -1,41 +1,59 @@
 # Law Assistant
 
-Law Assistant is a local-first Vietnamese legal assistant platform. It combines a structured legal-document API with a retrieval-augmented generation (RAG) service so users can search legal documents, retrieve relevant passages, and generate source-backed answers in Vietnamese.
+Law Assistant là nền tảng trợ lý pháp luật Việt Nam chạy local-first. Dự án kết hợp API quản lý văn bản pháp luật có cấu trúc với dịch vụ RAG (Retrieval-Augmented Generation) để người dùng có thể tìm kiếm văn bản, truy xuất đoạn căn cứ liên quan và tạo câu trả lời tiếng Việt có nguồn tham chiếu.
 
-The repository is currently a working technical prototype, not a hosted product. It is designed to demonstrate the core product advantages needed for a legal AI assistant: traceable sources, domain-specific retrieval, document metadata filtering, and a service boundary that keeps legal data management separate from AI answer generation.
+Repository này hiện là prototype kỹ thuật đang chạy được, chưa phải sản phẩm hosted production. Mục tiêu hiện tại là chứng minh các lợi thế cốt lõi của một trợ lý pháp luật AI: câu trả lời có căn cứ, truy xuất theo miền pháp luật, lọc theo metadata văn bản, và tách rõ lớp dữ liệu pháp luật khỏi lớp sinh câu trả lời bằng AI.
 
-> This project is for legal research and product development. It does not provide legal advice.
+> Dự án phục vụ nghiên cứu pháp luật và phát triển sản phẩm. Nội dung sinh ra không thay thế tư vấn pháp lý từ chuyên gia.
 
-## Why This Project Exists
+## Tổng Quan
 
-Vietnamese legal research is difficult because useful answers often depend on exact document status, effective dates, issuing authority, document relationships, and article-level context. A generic chatbot can produce fluent text, but it does not automatically know which source was retrieved, whether the document is still valid, or which legal passage supports the conclusion.
+```mermaid
+flowchart LR
+    A[Du lieu phap luat da chuan bi] --> B[law-service<br/>Spring Boot API]
+    B --> C[(MySQL<br/>Van ban + metadata + quan he)]
+    B --> D[(Redis<br/>Cache chi tiet)]
+    B --> E[[RabbitMQ<br/>Embedding events]]
+    E --> F[rag-service bridge]
+    F --> G[Celery workers]
+    G --> H[(Qdrant<br/>Vector index)]
+    I[Nguoi dung / UI / API client] --> J[rag-service<br/>FastAPI RAG]
+    J --> B
+    J --> H
+    J --> K[Embedding + Reranking + LLM]
+    K --> L[Cau tra loi tieng Viet<br/>kem nguon tham chieu]
+```
 
-Law Assistant is built around those constraints:
+## Vì Sao Dự Án Này Cần Thiết
 
-- **Grounded answers**: every RAG answer includes retrieved source references.
-- **Legal metadata awareness**: documents can be filtered by type, validity status, scope, authority, external ID, and date ranges.
-- **Vietnamese-first retrieval**: the embedding model and default answer language are configured for Vietnamese legal text.
-- **Separation of concerns**: `law-service` owns canonical legal data; `rag-service` owns indexing, retrieval, reranking, and answer generation.
-- **Local development path**: MySQL, Redis, RabbitMQ, and Qdrant run locally with Docker Compose.
+Nghiên cứu pháp luật Việt Nam khó vì câu trả lời đúng thường phụ thuộc vào hiệu lực văn bản, ngày ban hành, ngày có hiệu lực, cơ quan ban hành, quan hệ thay thế/sửa đổi, và ngữ cảnh cấp điều/khoản/điểm. Một chatbot tổng quát có thể viết trôi chảy, nhưng không tự đảm bảo văn bản nào được truy xuất, văn bản đó còn hiệu lực hay không, hoặc đoạn nào thật sự hỗ trợ kết luận.
 
-## What Is Implemented Today
+Law Assistant được xây quanh các ràng buộc đó:
+
+- **Câu trả lời có căn cứ**: phản hồi RAG trả về danh sách nguồn được truy xuất.
+- **Hiểu metadata pháp luật**: hỗ trợ lọc theo loại văn bản, trạng thái hiệu lực, phạm vi, cơ quan ban hành, mã văn bản ngoài, và khoảng ngày.
+- **Ưu tiên tiếng Việt pháp luật**: cấu hình embedding model và ngôn ngữ trả lời mặc định cho văn bản pháp luật Việt Nam.
+- **Tách trách nhiệm rõ ràng**: `law-service` quản lý dữ liệu pháp luật chuẩn; `rag-service` xử lý indexing, retrieval, reranking và answer generation.
+- **Dễ chạy local**: MySQL, Redis, RabbitMQ và Qdrant chạy bằng Docker Compose.
+
+## Những Gì Đã Triển Khai
 
 ### Legal Document Service
 
-`law-service` is a Spring Boot API for importing, storing, searching, and serving legal documents.
+`law-service` là API Spring Boot để import, lưu trữ, tìm kiếm và phục vụ văn bản pháp luật.
 
-Implemented capabilities:
+Đã có:
 
-- Import prepared Parquet data into MySQL.
-- Store document metadata, full content, and document relationships.
-- Search documents with pagination and filters.
-- Return full document detail by ID.
-- Cache document detail with Redis.
-- Publish RabbitMQ embedding-update events for one document or the full corpus.
-- Manage schema changes with Flyway migrations.
-- Expose health checks through Spring Boot Actuator.
+- Import dữ liệu Parquet đã chuẩn bị vào MySQL.
+- Lưu metadata, nội dung đầy đủ và quan hệ giữa văn bản.
+- Tìm kiếm văn bản có phân trang và bộ lọc.
+- Trả về chi tiết văn bản theo ID.
+- Cache chi tiết văn bản bằng Redis.
+- Publish RabbitMQ embedding-update event cho một văn bản hoặc toàn bộ corpus.
+- Quản lý thay đổi schema bằng Flyway migration.
+- Health check qua Spring Boot Actuator.
 
-Key endpoints:
+Endpoint chính:
 
 ```text
 GET  /actuator/health
@@ -49,24 +67,24 @@ POST /api/documents/embedding-events
 
 ### RAG Service
 
-`rag-service` is a FastAPI service that retrieves legal passages and generates cited answers.
+`rag-service` là dịch vụ FastAPI để truy xuất đoạn căn cứ pháp luật và tạo câu trả lời có nguồn.
 
-Implemented capabilities:
+Đã có:
 
-- Consume document update events through a RabbitMQ bridge.
-- Queue indexing work with Celery and Redis.
-- Chunk legal documents for retrieval.
-- Embed text with a Vietnamese legal embedding model.
-- Store vectors in Qdrant.
-- Rerank retrieved candidates with a CrossEncoder.
-- Classify common Vietnamese legal question types to improve retrieval.
-- Generate answers through a configurable LLM provider, with a stub provider for local development.
-- Return answer text, rewritten query, classification, retrieval query, and source references.
-- Provide an indexing audit command and evaluation runner.
-- Expose a lightweight document picker UI at `/documents`.
-- Add optional Langfuse/OpenTelemetry observability hooks.
+- Nhận document update event qua RabbitMQ bridge.
+- Đưa job indexing vào queue bằng Celery và Redis.
+- Chunk văn bản pháp luật cho truy xuất.
+- Embed text bằng Vietnamese legal embedding model.
+- Lưu vector trong Qdrant.
+- Rerank ứng viên truy xuất bằng CrossEncoder.
+- Phân loại một số nhóm câu hỏi pháp luật tiếng Việt để cải thiện retrieval.
+- Sinh câu trả lời qua LLM provider có thể cấu hình, mặc định dùng stub cho local development.
+- Trả về answer, rewritten query, classification, retrieval query và source references.
+- Có lệnh audit độ phủ indexing và evaluation runner.
+- Có document picker UI nhẹ tại `/documents`.
+- Có hook quan sát bằng Langfuse/OpenTelemetry.
 
-Key endpoints:
+Endpoint chính:
 
 ```text
 GET  /health
@@ -78,54 +96,28 @@ POST /api/rag/ask
 
 ### Test UI
 
-`UI_test` is a small browser interface for manual testing.
+`UI_test` là giao diện browser nhỏ để test thủ công.
 
-Implemented capabilities:
+Đã có:
 
-- Ask questions against the RAG API.
-- Inspect document detail pages.
-- Test API health and OpenAI-compatible configuration.
-- Keep local conversation state for manual QA.
+- Hỏi đáp qua RAG API.
+- Xem trang chi tiết văn bản.
+- Test health API và cấu hình OpenAI-compatible.
+- Lưu conversation state local phục vụ manual QA.
 
-## Architecture
+## Quy Mô Dữ Liệu Hiện Tại
 
-```text
-Prepared legal data
-       |
-       v
-+------------------+       MySQL / Redis / RabbitMQ
-|   law-service    |--------------------------------+
-| Spring Boot API  |                                |
-+------------------+                                |
-       |                                           events
-       | document API                                |
-       v                                             v
-+------------------+       Redis / Celery       +----------+
-|   rag-service    |--------------------------->|  Qdrant  |
-|   FastAPI RAG    |       indexing jobs        | vectors  |
-+------------------+                            +----------+
-       |
-       v
- Answer + cited source references
+```mermaid
+pie showData
+    title Quy mo du lieu import hien tai
+    "Metadata rows" : 127267
+    "Content rows" : 127267
+    "Relationship rows" : 651966
 ```
 
-## Repository Layout
+Dữ liệu local đang nằm trong `data_usable/`.
 
-```text
-LawAssistant/
-├── law-service/      # Spring Boot legal document API and importer
-├── rag-service/      # FastAPI retrieval, indexing, reranking, and answer API
-├── UI_test/          # Optional browser UI for manual testing
-├── data_usable/      # Prepared local data tables
-├── dataset/          # Dataset workspace and creation notes
-└── scripts/          # Data preparation helpers
-```
-
-## Data Included
-
-The local runnable data lives in `data_usable/`.
-
-Current prepared data includes:
+File chính:
 
 - `data_usable/current_new/metadata.parquet`
 - `data_usable/current_new/context.parquet`
@@ -137,19 +129,51 @@ Current prepared data includes:
 - `data_usable/audit/data_quality_report.json`
 - `data_usable/audit/bad_documents.csv`
 
-The `law-service` importer accepts either `content.parquet` or `context.parquet` as document content input. The current root dataset uses `context.parquet`.
+`law-service` importer nhận được cả `content.parquet` hoặc `context.parquet` làm nguồn nội dung văn bản. Dataset hiện tại ở root dùng `context.parquet`.
 
-Expected import totals for the prepared data:
+Kết quả import kỳ vọng:
 
 - `metadataRows`: `127267`
 - `contentRows`: `127267`
 - `relationshipRows`: `651966`
 
-If large Parquet artifacts are committed to GitHub, use Git LFS.
+Nếu commit file Parquet lớn lên GitHub, nên dùng Git LFS.
 
-## Technology Stack
+## Luồng Xử Lý RAG
 
-| Layer | Current implementation |
+```mermaid
+sequenceDiagram
+    participant U as User / UI
+    participant R as rag-service
+    participant L as law-service
+    participant Q as Qdrant
+    participant M as Embedding/Reranker/LLM
+
+    U->>R: Gui cau hoi tieng Viet
+    R->>M: Rewrite va classify cau hoi
+    R->>Q: Truy xuat vector candidates
+    R->>M: Rerank source candidates
+    R->>L: Lay metadata/chi tiet khi can
+    R->>M: Build prompt voi nguon truy xuat
+    M-->>R: Sinh cau tra loi
+    R-->>U: Answer + source references
+```
+
+## Cấu Trúc Repository
+
+```text
+LawAssistant/
+├── law-service/      # Spring Boot legal document API va importer
+├── rag-service/      # FastAPI retrieval, indexing, reranking va answer API
+├── UI_test/          # Browser UI tuy chon cho manual testing
+├── data_usable/      # Bang du lieu local da chuan bi
+├── dataset/          # Workspace dataset va ghi chu creation
+└── scripts/          # Helper xu ly du lieu
+```
+
+## Công Nghệ Sử Dụng
+
+| Lớp | Triển khai hiện tại |
 | --- | --- |
 | Legal document API | Java 19, Spring Boot 3.5, Spring Data JPA |
 | Relational storage | MySQL |
@@ -161,26 +185,26 @@ If large Parquet artifacts are committed to GitHub, use Git LFS.
 | Vector store | Qdrant |
 | Embeddings | `mainguyen9/vietlegal-harrier-0.6b` |
 | Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
-| LLM integration | Configurable OpenAI-compatible/chat-completions style client, local stub by default |
-| Observability | Langfuse and OpenTelemetry hooks |
+| LLM integration | OpenAI-compatible/chat-completions style client có thể cấu hình, local stub mặc định |
+| Observability | Langfuse và OpenTelemetry hooks |
 
-## Quick Start
+## Chạy Nhanh
 
-### Prerequisites
+### Yêu Cầu
 
 - Java 19+
 - Maven
 - Python 3.11+
-- Docker and Docker Compose
+- Docker và Docker Compose
 
-### 1. Start Law Service Dependencies
+### 1. Chạy dịch vụ phụ thuộc cho Law Service
 
 ```bash
 cd /home/lee/Documents/LawAssistant/law-service
 docker compose up -d
 ```
 
-Wait for MySQL:
+Đợi MySQL sẵn sàng:
 
 ```bash
 until docker compose exec mysql mysqladmin ping -h localhost -ulaw -plaw --silent; do
@@ -189,33 +213,33 @@ until docker compose exec mysql mysqladmin ping -h localhost -ulaw -plaw --silen
 done
 ```
 
-### 2. Run Law Service
+### 2. Chạy Law Service
 
 ```bash
 mvn spring-boot:run
 ```
 
-Health check:
+Kiểm tra health:
 
 ```bash
 curl http://localhost:8080/actuator/health
 ```
 
-### 3. Import Legal Documents
+### 3. Import Văn Bản Pháp Luật
 
-Run while `law-service` is running:
+Chạy khi `law-service` đang bật:
 
 ```bash
 curl -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current_new"
 ```
 
-Verify an imported document:
+Kiểm tra một văn bản đã import:
 
 ```bash
 curl "http://localhost:8080/api/documents/4260"
 ```
 
-### 4. Start RAG Service Dependencies
+### 4. Chạy dịch vụ phụ thuộc cho RAG Service
 
 ```bash
 cd /home/lee/Documents/LawAssistant/rag-service
@@ -226,19 +250,19 @@ cp .env.example .env
 docker compose up -d
 ```
 
-### 5. Run RAG API
+### 5. Chạy RAG API
 
 ```bash
 uvicorn rag_service.main:app --app-dir app --reload --port 8090
 ```
 
-Health check:
+Kiểm tra health:
 
 ```bash
 curl http://localhost:8090/health
 ```
 
-Ask a question:
+Gửi câu hỏi:
 
 ```bash
 curl -X POST "http://localhost:8090/api/rag/ask" \
@@ -246,9 +270,9 @@ curl -X POST "http://localhost:8090/api/rag/ask" \
   -d '{"question":"Văn bản nào quy định về hiệu lực thi hành?","top_k":5}'
 ```
 
-### 6. Index Documents for Retrieval
+### 6. Index Văn Bản Cho Retrieval
 
-In separate terminals, run the worker and RabbitMQ bridge:
+Chạy worker và RabbitMQ bridge ở hai terminal riêng:
 
 ```bash
 cd /home/lee/Documents/LawAssistant/rag-service
@@ -262,13 +286,13 @@ source .venv/bin/activate
 python -m rag_service.rabbit_bridge
 ```
 
-Then publish embedding events from `law-service`:
+Sau đó publish embedding event từ `law-service`:
 
 ```bash
 curl -X POST "http://localhost:8080/api/documents/embedding-events"
 ```
 
-Audit indexed coverage:
+Audit độ phủ indexing:
 
 ```bash
 cd /home/lee/Documents/LawAssistant/rag-service
@@ -276,7 +300,7 @@ source .venv/bin/activate
 python -m rag_service.index_audit
 ```
 
-## Optional Browser UI
+## Giao Diện Browser Tùy Chọn
 
 ```bash
 cd /home/lee/Documents/LawAssistant/UI_test
@@ -286,28 +310,28 @@ pip install -r requirements.txt
 uvicorn app:app --reload --port 8091
 ```
 
-Open:
+Mở:
 
 ```text
 http://localhost:8091
 ```
 
-The RAG service also exposes its document picker at:
+RAG service cũng có document picker tại:
 
 ```text
 http://localhost:8090/documents
 ```
 
-## Evaluation and Quality Checks
+## Đánh Giá Và Kiểm Tra Chất Lượng
 
-Run law-service tests:
+Chạy test cho `law-service`:
 
 ```bash
 cd /home/lee/Documents/LawAssistant/law-service
 mvn test
 ```
 
-Run rag-service tests and linting:
+Chạy test và lint cho `rag-service`:
 
 ```bash
 cd /home/lee/Documents/LawAssistant/rag-service
@@ -316,7 +340,7 @@ pytest
 ruff check app tests
 ```
 
-Run RAG evaluation on the bundled test set:
+Chạy RAG evaluation với test set có sẵn:
 
 ```bash
 cd /home/lee/Documents/LawAssistant/rag-service
@@ -328,24 +352,24 @@ python -m rag_service.evaluation \
   --reset
 ```
 
-## Current Limitations
+## Giới Hạn Hiện Tại
 
-- The project is optimized for local development, not production deployment.
-- The default LLM provider is a local stub. Real answer generation requires configuring an LLM provider in `rag-service/.env`.
-- Legal data freshness depends on the prepared dataset artifacts in this repository.
-- The UI in `UI_test` is for manual testing and demos, not a polished production frontend.
-- Generated answers must be reviewed by a qualified human before legal use.
+- Dự án đang tối ưu cho local development, chưa phải production deployment.
+- LLM provider mặc định là local stub. Muốn sinh câu trả lời thật cần cấu hình provider trong `rag-service/.env`.
+- Độ mới của dữ liệu pháp luật phụ thuộc vào dataset artifact đã chuẩn bị trong repository.
+- UI trong `UI_test` phục vụ manual testing và demo, chưa phải production frontend.
+- Câu trả lời sinh bởi AI cần được con người có chuyên môn kiểm tra trước khi dùng cho mục đích pháp lý.
 
-## Roadmap Ideas
+## Định Hướng Tiếp Theo
 
-- Production frontend with document search, cited chat, and source inspection.
-- Dataset refresh pipeline and provenance reporting.
-- Stronger citation validation and answer refusal behavior when sources are weak.
-- User-facing evaluation dashboard for retrieval quality.
-- Deployment profiles for staging and production infrastructure.
-- Authentication, audit logs, and workspace management for organizational use.
+- Production frontend với document search, cited chat và source inspection.
+- Pipeline refresh dataset và báo cáo provenance.
+- Citation validation mạnh hơn và refusal behavior khi nguồn yếu.
+- Dashboard đánh giá chất lượng retrieval.
+- Deployment profile cho staging và production.
+- Authentication, audit logs và workspace management cho tổ chức.
 
-## More Documentation
+## Tài Liệu Thêm
 
 - [law-service README](law-service/README.md)
 - [rag-service README](rag-service/README.md)
