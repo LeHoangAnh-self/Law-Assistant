@@ -1,0 +1,2 @@
+[console_scripts]
+vn-law-qna-crawler = qna_crawler.cli:main

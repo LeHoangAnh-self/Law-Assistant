@@ -1,0 +1,29 @@
+services:
+  qna-crawler-mysql:
+    image: mysql:8.4
+    container_name: qna-crawler-mysql
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${QNA_CRAWLER_MYSQL_ROOT_PASSWORD:?set QNA_CRAWLER_MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${QNA_CRAWLER_MYSQL_DATABASE:-qna_dataset}
+      MYSQL_USER: ${QNA_CRAWLER_MYSQL_USER:-qna}
+      MYSQL_PASSWORD: ${QNA_CRAWLER_MYSQL_PASSWORD:?set QNA_CRAWLER_MYSQL_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - qna-crawler-mysql-data:/var/lib/mysql
+
+volumes:
+  qna-crawler-mysql-data:

@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: vn-law-qna-crawler
+Version: 0.1.0
+Summary: Government Q&A crawler for Law Assistant benchmark and fine-tuning datasets.
+Requires-Python: >=3.11
+Requires-Dist: beautifulsoup4>=4.12.0
+Requires-Dist: mysql-connector-python>=8.4.0
+Requires-Dist: pyarrow>=15.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: sqlalchemy>=2.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
