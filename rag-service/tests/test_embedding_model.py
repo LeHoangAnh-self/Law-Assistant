@@ -13,10 +13,12 @@ def test_embedding_model_keeps_device_and_batch_size_config() -> None:
 def test_default_embedding_model_is_vietlegal_harrier() -> None:
     from rag_service.config import Settings
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.embedding_model_name == "mainguyen9/vietlegal-harrier-0.6b"
     assert settings.embedding_dimension == 1024
     assert settings.embedding_query_instruction.startswith("Instruct:")
     assert settings.llm_model == "luanngo/Qwen3-4B-VietNamese-Legal-Chat"
     assert settings.qdrant_delete_existing_chunks is False
+    assert settings.chunk_size == 1500
+    assert settings.chunk_overlap == 200

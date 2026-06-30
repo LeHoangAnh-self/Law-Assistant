@@ -16,6 +16,12 @@ public class LegalDocument {
     @Id
     private Long id;
 
+    @Column(name = "external_source", length = 255)
+    private String externalSource;
+
+    @Column(name = "external_docid", length = 255)
+    private String externalDocid;
+
     @Column(nullable = false, length = 1500)
     private String title;
 
@@ -34,8 +40,11 @@ public class LegalDocument {
     @Column(name = "expired_date")
     private LocalDate expiredDate;
 
-    @Column(name = "source", length = 500)
+    @Column(name = "source", length = 2048)
     private String source;
+
+    @Column(name = "source_url", length = 2048)
+    private String sourceUrl;
 
     @Column(name = "gazette_date_raw", length = 255)
     private String gazetteDateRaw;
@@ -80,6 +89,10 @@ public class LegalDocument {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public String getExternalSource() { return externalSource; }
+    public void setExternalSource(String externalSource) { this.externalSource = externalSource; }
+    public String getExternalDocid() { return externalDocid; }
+    public void setExternalDocid(String externalDocid) { this.externalDocid = externalDocid; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getDocumentNumber() { return documentNumber; }
@@ -94,6 +107,8 @@ public class LegalDocument {
     public void setExpiredDate(LocalDate expiredDate) { this.expiredDate = expiredDate; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
+    public String getSourceUrl() { return sourceUrl; }
+    public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }
     public String getGazetteDateRaw() { return gazetteDateRaw; }
     public void setGazetteDateRaw(String gazetteDateRaw) { this.gazetteDateRaw = gazetteDateRaw; }
     public String getSector() { return sector; }

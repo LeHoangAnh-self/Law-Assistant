@@ -1,4 +1,5 @@
 from celery import Celery
+import httpx
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from rag_service.config import get_settings
@@ -28,7 +29,15 @@ def get_indexer() -> DocumentIndexer:
 
 @celery_app.task(
     name="rag_service.index_document",
-    autoretry_for=(ResponseHandlingException, UnexpectedResponse, TimeoutError, ConnectionError),
+    autoretry_for=(
+        ResponseHandlingException,
+        UnexpectedResponse,
+        httpx.ConnectError,
+        httpx.RemoteProtocolError,
+        httpx.ReadTimeout,
+        TimeoutError,
+        ConnectionError,
+    ),
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,

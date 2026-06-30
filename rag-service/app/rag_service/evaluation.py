@@ -3,6 +3,7 @@ import asyncio
 import csv
 import json
 import re
+import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -34,6 +35,8 @@ class EvaluationCase:
     title: str | None = None
     question_date: str | None = None
     retrieval_cutoff_date: str | None = None
+    gold_document_ids: list[int] | None = None
+    gold_chunk_ids: list[str] | None = None
 
 
 @dataclass
@@ -57,6 +60,20 @@ class EvaluationResult:
     cited_reference_count: int
     citation_coverage: float
     top_document_ids: str
+    top_chunk_ids: str
+    top_document_types: str
+    top_validity_statuses: str
+    top_scopes: str
+    top_issuing_authorities: str
+    top_issued_dates: str
+    top_effective_dates: str
+    top_expired_dates: str
+    top_external_docids: str
+    gold_document_recall_at_k: float | None
+    gold_chunk_recall_at_k: float | None
+    top1_gold_hit: bool | None
+    duplicate_document_rate: float
+    retrieval_cutoff_violation_count: int
     judge: JudgeScores
 
 
@@ -93,11 +110,58 @@ def load_questions(path: str | None, url: str | None, limit: int | None) -> list
                     title=item.get("title"),
                     question_date=question_date,
                     retrieval_cutoff_date=retrieval_cutoff_date,
+                    gold_document_ids=_gold_document_ids(item),
+                    gold_chunk_ids=_str_list(item.get("gold_chunk_ids")),
                 )
             )
         else:
             raise ValueError("Questions must be strings or objects with a question field")
     return cases[:limit] if limit else cases
+
+
+def _int_list(value: Any) -> list[int] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("gold_document_ids must be a list")
+    return [int(item) for item in value]
+
+
+def _gold_document_ids(item: dict[str, Any]) -> list[int] | None:
+    explicit_ids = _int_list(item.get("gold_document_ids"))
+    if explicit_ids:
+        return _dedupe_preserving_order(explicit_ids)
+
+    citation_ids = [
+        int(citation["document_id"])
+        for citation in item.get("expected_legal_citations", [])
+        if isinstance(citation, dict) and citation.get("document_id") is not None
+    ]
+    if citation_ids:
+        return _dedupe_preserving_order(citation_ids)
+
+    matched_ids: list[int] = []
+    for link in item.get("matched_direct_legal_documents", []):
+        if not isinstance(link, dict):
+            continue
+        for document in link.get("matched_documents", []):
+            if isinstance(document, dict) and document.get("document_id") is not None:
+                matched_ids.append(int(document["document_id"]))
+    if matched_ids:
+        return _dedupe_preserving_order(matched_ids)
+    return None
+
+
+def _dedupe_preserving_order(values: list[int]) -> list[int]:
+    return list(dict.fromkeys(values))
+
+
+def _str_list(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("gold_chunk_ids must be a list")
+    return [str(item) for item in value]
 
 
 async def ask_rag(
@@ -126,6 +190,44 @@ def citation_coverage(answer: str, reference_count: int) -> tuple[int, float]:
     if reference_count == 0:
         return 0, 0.0
     return cited_reference_count, cited_reference_count / reference_count
+
+
+def recall_at_k(retrieved: list[Any], gold: list[Any] | None) -> float | None:
+    if not gold:
+        return None
+    return len(set(retrieved) & set(gold)) / len(set(gold))
+
+
+def top1_gold_hit(
+    retrieved_document_ids: list[int],
+    gold_document_ids: list[int] | None,
+) -> bool | None:
+    if not gold_document_ids:
+        return None
+    if not retrieved_document_ids:
+        return False
+    return retrieved_document_ids[0] in set(gold_document_ids)
+
+
+def duplicate_document_rate(document_ids: list[int]) -> float:
+    if not document_ids:
+        return 0.0
+    duplicate_count = len(document_ids) - len(set(document_ids))
+    return duplicate_count / len(document_ids)
+
+
+def retrieval_cutoff_violation_count(
+    references: list[dict[str, Any]],
+    retrieval_cutoff_date: str | None,
+) -> int:
+    if not retrieval_cutoff_date:
+        return 0
+    count = 0
+    for reference in references:
+        issued_date = normalize_date(reference.get("issued_date"))
+        if issued_date and issued_date > retrieval_cutoff_date:
+            count += 1
+    return count
 
 
 def build_judge_prompt(
@@ -189,8 +291,23 @@ async def judge_result(
     if not enabled:
         return JudgeScores()
     prompt = build_judge_prompt(question, answer, references, expected_answer)
-    output = await judge_client.generate(prompt)
+    try:
+        output = await judge_client.generate(prompt)
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        return JudgeScores(notes=f"Judge failed: {type(exc).__name__}: {exc}")
     return parse_judge_scores(output)
+
+
+def warn_if_judge_endpoint_looks_local(args: argparse.Namespace) -> None:
+    if args.judge_provider != "openai-compatible":
+        return
+    base_url = args.judge_api_base_url or ""
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        print(
+            "Warning: judge API base URL is local; ensure an OpenAI-compatible server is "
+            f"running at {base_url}. Judge failures will be recorded in judge_notes.",
+            file=sys.stderr,
+        )
 
 
 async def evaluate_question(
@@ -209,6 +326,8 @@ async def evaluate_question(
     answer = response.get("answer", "")
     references = response.get("references", [])
     cited_count, coverage = citation_coverage(answer, len(references))
+    document_ids = [int(ref.get("document_id")) for ref in references if ref.get("document_id")]
+    chunk_ids = [str(ref.get("chunk_id")) for ref in references if ref.get("chunk_id")]
     judge = await judge_result(
         judge_enabled,
         judge_client,
@@ -217,7 +336,8 @@ async def evaluate_question(
         references,
         case.expected_answer,
     )
-    top_document_ids = ",".join(str(ref.get("document_id")) for ref in references)
+    top_document_ids = ",".join(str(document_id) for document_id in document_ids)
+    top_chunk_ids = ",".join(chunk_ids)
     return EvaluationResult(
         question=case.question,
         expected_answer=case.expected_answer,
@@ -228,8 +348,35 @@ async def evaluate_question(
         cited_reference_count=cited_count,
         citation_coverage=round(coverage, 4),
         top_document_ids=top_document_ids,
+        top_chunk_ids=top_chunk_ids,
+        top_document_types=_join_reference_field(references, "document_type"),
+        top_validity_statuses=_join_reference_field(references, "validity_status"),
+        top_scopes=_join_reference_field(references, "scope"),
+        top_issuing_authorities=_join_reference_field(references, "issuing_authority"),
+        top_issued_dates=_join_reference_field(references, "issued_date"),
+        top_effective_dates=_join_reference_field(references, "effective_date"),
+        top_expired_dates=_join_reference_field(references, "expired_date"),
+        top_external_docids=_join_reference_field(references, "external_docid"),
+        gold_document_recall_at_k=_round_optional(
+            recall_at_k(document_ids, case.gold_document_ids)
+        ),
+        gold_chunk_recall_at_k=_round_optional(recall_at_k(chunk_ids, case.gold_chunk_ids)),
+        top1_gold_hit=top1_gold_hit(document_ids, case.gold_document_ids),
+        duplicate_document_rate=round(duplicate_document_rate(document_ids), 4),
+        retrieval_cutoff_violation_count=retrieval_cutoff_violation_count(
+            references,
+            case.retrieval_cutoff_date,
+        ),
         judge=judge,
     )
+
+
+def _round_optional(value: float | None) -> float | None:
+    return round(value, 4) if value is not None else None
+
+
+def _join_reference_field(references: list[dict[str, Any]], field: str) -> str:
+    return ",".join(str(reference.get(field) or "") for reference in references)
 
 
 def write_jsonl(path: Path, result: EvaluationResult) -> None:
@@ -247,6 +394,20 @@ def write_csv(path: Path, results: list[EvaluationResult]) -> None:
         "cited_reference_count",
         "citation_coverage",
         "top_document_ids",
+        "top_chunk_ids",
+        "top_document_types",
+        "top_validity_statuses",
+        "top_scopes",
+        "top_issuing_authorities",
+        "top_issued_dates",
+        "top_effective_dates",
+        "top_expired_dates",
+        "top_external_docids",
+        "gold_document_recall_at_k",
+        "gold_chunk_recall_at_k",
+        "top1_gold_hit",
+        "duplicate_document_rate",
+        "retrieval_cutoff_violation_count",
         "retrieval_relevance",
         "answer_groundedness",
         "citation_quality",
@@ -267,6 +428,20 @@ def write_csv(path: Path, results: list[EvaluationResult]) -> None:
                     "cited_reference_count": result.cited_reference_count,
                     "citation_coverage": result.citation_coverage,
                     "top_document_ids": result.top_document_ids,
+                    "top_chunk_ids": result.top_chunk_ids,
+                    "top_document_types": result.top_document_types,
+                    "top_validity_statuses": result.top_validity_statuses,
+                    "top_scopes": result.top_scopes,
+                    "top_issuing_authorities": result.top_issuing_authorities,
+                    "top_issued_dates": result.top_issued_dates,
+                    "top_effective_dates": result.top_effective_dates,
+                    "top_expired_dates": result.top_expired_dates,
+                    "top_external_docids": result.top_external_docids,
+                    "gold_document_recall_at_k": result.gold_document_recall_at_k,
+                    "gold_chunk_recall_at_k": result.gold_chunk_recall_at_k,
+                    "top1_gold_hit": result.top1_gold_hit,
+                    "duplicate_document_rate": result.duplicate_document_rate,
+                    "retrieval_cutoff_violation_count": result.retrieval_cutoff_violation_count,
                     "retrieval_relevance": result.judge.retrieval_relevance,
                     "answer_groundedness": result.judge.answer_groundedness,
                     "citation_quality": result.judge.citation_quality,
@@ -284,11 +459,25 @@ def print_summary(results: list[EvaluationResult]) -> None:
     avg_latency = sum(result.latency_ms for result in results) / len(results)
     avg_refs = sum(result.reference_count for result in results) / len(results)
     avg_coverage = sum(result.citation_coverage for result in results) / len(results)
+    avg_duplicate_document_rate = sum(result.duplicate_document_rate for result in results) / len(
+        results
+    )
+    cutoff_violations = sum(result.retrieval_cutoff_violation_count for result in results)
     print("")
     print(f"Evaluated questions: {len(results)}")
     print(f"Average latency: {avg_latency:.0f} ms")
     print(f"Average references: {avg_refs:.2f}")
     print(f"Average citation coverage: {avg_coverage:.2%}")
+    print(f"Average duplicate document rate: {avg_duplicate_document_rate:.2%}")
+    print(f"Retrieval cutoff violations: {cutoff_violations}")
+    for field in ["gold_document_recall_at_k", "gold_chunk_recall_at_k"]:
+        scores = [getattr(result, field) for result in results]
+        scores = [score for score in scores if score is not None]
+        if scores:
+            print(f"Average {field}: {sum(scores) / len(scores):.2%}")
+    top1_scores = [result.top1_gold_hit for result in results if result.top1_gold_hit is not None]
+    if top1_scores:
+        print(f"Top-1 gold hit rate: {sum(top1_scores) / len(top1_scores):.2%}")
     for field in [
         "retrieval_relevance",
         "answer_groundedness",
@@ -303,6 +492,7 @@ def print_summary(results: list[EvaluationResult]) -> None:
 
 
 async def run(args: argparse.Namespace) -> None:
+    warn_if_judge_endpoint_looks_local(args)
     cases = load_questions(args.questions_file, args.questions_url, args.limit)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

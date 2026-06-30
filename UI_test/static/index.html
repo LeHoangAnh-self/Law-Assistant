@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Law Assistant RAG Test</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="chat-pane" aria-label="RAG chat">
+        <header class="topbar">
+          <div class="brand-lockup">
+            <p class="eyebrow">Law Assistant</p>
+            <h1>RAG Chat Test</h1>
+            <p class="topbar-subtitle">Vietnamese legal QA with source-backed answers</p>
+          </div>
+          <div class="topbar-actions">
+            <button type="button" class="secondary" id="exportBtn">Export log</button>
+            <button type="button" class="secondary" id="newChatBtn">New chat</button>
+            <div class="health" id="healthBadge">Checking service...</div>
+          </div>
+        </header>
+
+        <section class="messages" id="messages" aria-live="polite">
+          <article class="message assistant">
+            <div class="avatar">AI</div>
+            <div class="message-stack">
+              <div class="message-header">
+                <span class="message-author">Law Assistant</span>
+                <span class="message-time">Ready</span>
+              </div>
+              <div class="bubble">
+                <p>
+                  Ask a Vietnamese legal question. Follow-up questions can use recent chat context,
+                  and each answer includes retrieved passages plus local document links.
+                </p>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <form class="composer" id="askForm">
+          <div class="composer-box">
+            <textarea
+              id="question"
+              name="question"
+              rows="3"
+              required
+              minlength="3"
+              maxlength="4000"
+              placeholder="Ask a legal question with facts, date, and desired answer style..."
+            ></textarea>
+          </div>
+          <div class="composer-actions">
+            <button type="button" class="secondary" id="clearBtn">Clear</button>
+            <button type="submit" id="sendBtn">Ask RAG</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="side-pane" aria-label="RAG controls and citations">
+        <section class="panel">
+          <h2>ChatGPT Connection</h2>
+          <label>
+            OpenAI API key
+            <input id="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+          </label>
+          <label>
+            Test model
+            <input id="testModel" type="text" value="gpt-5.5" list="modelOptions" />
+          </label>
+          <datalist id="modelOptions">
+            <option value="gpt-5.5"></option>
+            <option value="gpt-5"></option>
+            <option value="gpt-5-mini"></option>
+            <option value="gpt-4o-mini"></option>
+          </datalist>
+          <label>
+            Reasoning effort
+            <select id="reasoningEffort">
+              <option value="medium" selected>medium</option>
+              <option value="low">low</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button type="button" id="testKeyBtn">Test key</button>
+            <button type="button" class="secondary" id="forgetKeyBtn">Forget</button>
+          </div>
+          <p class="setting-status" id="keyStatus">
+            Use an API model ID, for example gpt-5.5. The key is only used for this test.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2>Run Settings</h2>
+          <label class="check-row">
+            <input id="includeContext" type="checkbox" checked />
+            Use conversation context
+          </label>
+          <label>
+            Top citations
+            <input id="topK" type="number" min="1" max="20" value="6" />
+          </label>
+          <label>
+            Retrieval cutoff date
+            <input id="cutoffDate" type="date" />
+          </label>
+          <label>
+            Filter key
+            <input id="filterKey" type="text" placeholder="document_type" />
+          </label>
+          <label>
+            Filter value
+            <input id="filterValue" type="text" placeholder="LAW" />
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Citations</h2>
+            <span id="citationCount">0</span>
+          </div>
+          <div class="citations" id="citations">
+            <p class="muted">Citations will appear after a response.</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <template id="messageTemplate">
+      <article class="message">
+        <div class="avatar"></div>
+        <div class="message-stack">
+          <div class="message-header">
+            <span class="message-author"></span>
+            <span class="message-time"></span>
+          </div>
+          <div class="bubble"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

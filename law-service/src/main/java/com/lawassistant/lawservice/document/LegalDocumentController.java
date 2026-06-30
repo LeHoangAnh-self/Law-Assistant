@@ -3,6 +3,7 @@ package com.lawassistant.lawservice.document;
 import com.lawassistant.lawservice.embedding.EmbeddingEventPublisher;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -33,12 +34,30 @@ public class LegalDocumentController {
             @RequestParam(required = false) String query,
             @RequestParam(required = false) String documentType,
             @RequestParam(required = false) String validityStatus,
+            @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String issuingAuthority,
+            @RequestParam(required = false) String externalDocid,
+            @RequestParam(required = false) LocalDate issuedDateFrom,
+            @RequestParam(required = false) LocalDate issuedDateTo,
+            @RequestParam(required = false) LocalDate effectiveDateFrom,
+            @RequestParam(required = false) LocalDate effectiveDateTo,
+            @RequestParam(required = false) LocalDate expiredDateFrom,
+            @RequestParam(required = false) LocalDate expiredDateTo,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return documentService.search(
                 query,
                 documentType,
                 validityStatus,
+                scope,
+                issuingAuthority,
+                externalDocid,
+                issuedDateFrom,
+                issuedDateTo,
+                effectiveDateFrom,
+                effectiveDateTo,
+                expiredDateFrom,
+                expiredDateTo,
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "issuedDate").and(Sort.by("id"))));
     }
 

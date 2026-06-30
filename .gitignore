@@ -36,3 +36,6 @@ rag-service/evaluation/**/rag_eval_results.jsonl
 data/
 data-backup/
 data_requires_update/
+
+# Local oversized dataset artifact (cannot be pushed to GitHub LFS > 2GB limit)
+data_usable/current_new/context.parquet

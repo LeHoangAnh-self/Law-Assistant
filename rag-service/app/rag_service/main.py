@@ -35,6 +35,15 @@ async def search_documents(
     query: str = "",
     document_type: str | None = Query(default=None, alias="documentType"),
     validity_status: str | None = Query(default=None, alias="validityStatus"),
+    scope: str | None = None,
+    issuing_authority: str | None = Query(default=None, alias="issuingAuthority"),
+    external_docid: str | None = Query(default=None, alias="externalDocid"),
+    issued_date_from: str | None = Query(default=None, alias="issuedDateFrom"),
+    issued_date_to: str | None = Query(default=None, alias="issuedDateTo"),
+    effective_date_from: str | None = Query(default=None, alias="effectiveDateFrom"),
+    effective_date_to: str | None = Query(default=None, alias="effectiveDateTo"),
+    expired_date_from: str | None = Query(default=None, alias="expiredDateFrom"),
+    expired_date_to: str | None = Query(default=None, alias="expiredDateTo"),
     page: int = Query(default=0, ge=0),
     size: int = Query(default=20, ge=1, le=100),
 ) -> dict:
@@ -44,6 +53,15 @@ async def search_documents(
         size=size,
         document_type=document_type,
         validity_status=validity_status,
+        scope=scope,
+        issuing_authority=issuing_authority,
+        external_docid=external_docid,
+        issued_date_from=issued_date_from,
+        issued_date_to=issued_date_to,
+        effective_date_from=effective_date_from,
+        effective_date_to=effective_date_to,
+        expired_date_from=expired_date_from,
+        expired_date_to=expired_date_to,
     )
 
 

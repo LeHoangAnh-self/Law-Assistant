@@ -3,6 +3,7 @@ from collections.abc import Iterable
 
 import httpx
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from rag_service.config import get_settings
 
@@ -45,19 +46,30 @@ def fetch_qdrant_indexed_document_ids(
     qdrant_url: str,
     collection_name: str,
     scroll_limit: int,
+    client: QdrantClient | None = None,
 ) -> set[int]:
-    client = QdrantClient(url=qdrant_url)
+    client = client or QdrantClient(url=qdrant_url)
     indexed_ids: set[int] = set()
     offset = None
     scanned_points = 0
     while True:
-        points, offset = client.scroll(
-            collection_name=collection_name,
-            limit=scroll_limit,
-            offset=offset,
-            with_payload=["document_id"],
-            with_vectors=False,
-        )
+        try:
+            points, offset = client.scroll(
+                collection_name=collection_name,
+                limit=scroll_limit,
+                offset=offset,
+                with_payload=["document_id"],
+                with_vectors=False,
+            )
+        except UnexpectedResponse as exc:
+            if exc.status_code == 404 and b"Collection" in exc.content:
+                print(
+                    f"Qdrant collection '{collection_name}' does not exist yet; "
+                    "treating indexed count as 0.",
+                    flush=True,
+                )
+                return set()
+            raise
         scanned_points += len(points)
         for point in points:
             if point.payload and point.payload.get("document_id") is not None:
@@ -71,7 +83,9 @@ def fetch_qdrant_indexed_document_ids(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compare Law Service document IDs against Qdrant indexed IDs.")
+    parser = argparse.ArgumentParser(
+        description="Compare Law Service document IDs against Qdrant indexed IDs."
+    )
     parser.add_argument("--page-size", type=int, default=100)
     parser.add_argument("--scroll-limit", type=int, default=1000)
     parser.add_argument("--sample-size", type=int, default=50)

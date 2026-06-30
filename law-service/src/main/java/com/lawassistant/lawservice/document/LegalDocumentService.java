@@ -2,6 +2,7 @@ package com.lawassistant.lawservice.document;
 
 import com.lawassistant.lawservice.relationship.LegalDocumentRelationshipRepository;
 import jakarta.persistence.EntityNotFoundException;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -28,8 +29,34 @@ public class LegalDocumentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<LegalDocument> search(String query, String documentType, String validityStatus, Pageable pageable) {
-        return documentRepository.search(blankToNull(query), blankToNull(documentType), blankToNull(validityStatus), pageable);
+    public Page<LegalDocument> search(
+            String query,
+            String documentType,
+            String validityStatus,
+            String scope,
+            String issuingAuthority,
+            String externalDocid,
+            LocalDate issuedDateFrom,
+            LocalDate issuedDateTo,
+            LocalDate effectiveDateFrom,
+            LocalDate effectiveDateTo,
+            LocalDate expiredDateFrom,
+            LocalDate expiredDateTo,
+            Pageable pageable) {
+        return documentRepository.search(
+                blankToNull(query),
+                blankToNull(documentType),
+                blankToNull(validityStatus),
+                blankToNull(scope),
+                blankToNull(issuingAuthority),
+                blankToNull(externalDocid),
+                issuedDateFrom,
+                issuedDateTo,
+                effectiveDateFrom,
+                effectiveDateTo,
+                expiredDateFrom,
+                expiredDateTo,
+                pageable);
     }
 
     @Cacheable(cacheNames = "legal-document-detail", key = "#id")
@@ -47,7 +74,7 @@ public class LegalDocumentService {
 
     @Transactional(readOnly = true)
     public List<Long> findAllDocumentIds() {
-        return documentRepository.findAll().stream().map(LegalDocument::getId).toList();
+        return documentRepository.findAllIds();
     }
 
     @CacheEvict(cacheNames = "legal-document-detail", key = "#id")
