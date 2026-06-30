@@ -1,0 +1,86 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Law Assistant RAG chat demo</title>
+  <desc id="desc">Static preview of the Law Assistant UI showing a Vietnamese legal question, a source-backed answer, and retrieved citations.</desc>
+  <rect width="1200" height="760" rx="18" fill="#eef2f5"/>
+  <rect x="20" y="20" width="1160" height="720" rx="14" fill="#ffffff" stroke="#d5dee6"/>
+
+  <rect x="20" y="20" width="790" height="86" rx="14" fill="#ffffff"/>
+  <path d="M20 94H810" stroke="#d5dee6"/>
+  <text x="50" y="48" fill="#0f766e" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">LAW ASSISTANT</text>
+  <text x="50" y="76" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="26" font-weight="800">RAG Chat Test</text>
+  <text x="50" y="95" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13">Vietnamese legal QA with source-backed answers</text>
+  <rect x="622" y="43" width="152" height="34" rx="8" fill="#e9f7f4" stroke="#86cfc6"/>
+  <circle cx="644" cy="60" r="5" fill="#0f766e"/>
+  <text x="658" y="65" fill="#0a5c56" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">rag-service ok</text>
+
+  <rect x="810" y="20" width="370" height="720" fill="#f7fafc"/>
+  <path d="M810 20V740" stroke="#d5dee6"/>
+
+  <rect x="842" y="50" width="306" height="154" rx="8" fill="#ffffff" stroke="#d5dee6"/>
+  <text x="862" y="80" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800">Run Settings</text>
+  <text x="862" y="112" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">Top citations</text>
+  <rect x="862" y="124" width="76" height="32" rx="7" fill="#f2f6f8" stroke="#d5dee6"/>
+  <text x="892" y="145" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">6</text>
+  <text x="962" y="112" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">Classification</text>
+  <rect x="962" y="124" width="164" height="32" rx="7" fill="#f2f6f8" stroke="#d5dee6"/>
+  <text x="976" y="145" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">tax.pit_real_estate</text>
+  <rect x="862" y="166" width="264" height="20" rx="10" fill="#e9f7f4"/>
+  <text x="878" y="181" fill="#0a5c56" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">Use conversation context</text>
+
+  <rect x="842" y="226" width="306" height="468" rx="8" fill="#ffffff" stroke="#d5dee6"/>
+  <text x="862" y="256" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="800">Citations</text>
+  <rect x="1100" y="238" width="26" height="24" rx="8" fill="#e4f4f1"/>
+  <text x="1109" y="255" fill="#0a5c56" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">6</text>
+
+  <g>
+    <rect x="862" y="276" width="264" height="92" rx="8" fill="#f8fbfc" stroke="#d5dee6"/>
+    <text x="878" y="302" fill="#0f766e" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">[1] Cited in answer</text>
+    <text x="878" y="326" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Thông tư 111/2013/TT-BTC</text>
+    <text x="878" y="348" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">Hết hiệu lực một phần · Score 20.819</text>
+  </g>
+  <g>
+    <rect x="862" y="382" width="264" height="92" rx="8" fill="#f8fbfc" stroke="#d5dee6"/>
+    <text x="878" y="408" fill="#0f766e" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">[2] Cited in answer</text>
+    <text x="878" y="432" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Thông tư 111/2013/TT-BTC</text>
+    <text x="878" y="454" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">Đồng sở hữu · Score 12.000</text>
+  </g>
+  <g>
+    <rect x="862" y="488" width="264" height="92" rx="8" fill="#f8fbfc" stroke="#d5dee6"/>
+    <text x="878" y="514" fill="#0f766e" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">[6] Cited in answer</text>
+    <text x="878" y="538" fill="#16212d" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Thông tư 111/2013/TT-BTC</text>
+    <text x="878" y="560" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">Nhà ở duy nhất · Score 15.794</text>
+  </g>
+  <rect x="862" y="604" width="264" height="48" rx="8" fill="#f2f6f8" stroke="#d5dee6"/>
+  <text x="878" y="632" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">3 nguồn khác được truy xuất</text>
+
+  <rect x="50" y="132" width="704" height="132" rx="8" fill="#223042"/>
+  <text x="70" y="164" fill="#ffffff" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="800">You</text>
+  <text x="70" y="194" fill="#f7fafc" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15">Tôi và vợ đang đứng tên chung trên sổ hồng một căn hộ tại TP.HCM,</text>
+  <text x="70" y="220" fill="#f7fafc" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15">muốn bán toàn bộ căn hộ. Vợ tôi còn đứng tên 1/3 đất ở Long An.</text>
+  <text x="70" y="246" fill="#f7fafc" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15">Việc bán căn hộ có được miễn thuế TNCN vì là “nhà ở duy nhất” không?</text>
+  <rect x="764" y="138" width="42" height="42" rx="8" fill="#273444"/>
+  <text x="775" y="164" fill="#ffffff" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">You</text>
+
+  <rect x="50" y="302" width="42" height="42" rx="8" fill="#0f766e"/>
+  <text x="63" y="328" fill="#ffffff" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">AI</text>
+  <text x="108" y="316" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="800">Law Assistant</text>
+  <text x="213" y="316" fill="#9aa7b5" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">/ source-backed answer</text>
+  <rect x="108" y="330" width="646" height="332" rx="8" fill="#ffffff" stroke="#d5dee6"/>
+  <text x="132" y="362" fill="#111827" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="800">1. Kết luận</text>
+  <circle cx="125" cy="392" r="3" fill="#0f766e"/>
+  <text x="138" y="397" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">Anh có cơ sở được miễn thuế TNCN đối với phần chuyển nhượng của anh</text>
+  <text x="138" y="419" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">nếu không đứng tên nhà ở/quyền sử dụng đất ở nào khác [6], [1].</text>
+  <circle cx="125" cy="449" r="3" fill="#0f766e"/>
+  <text x="138" y="454" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">Vợ không đủ điều kiện miễn thuế đối với phần của vợ vì còn 1/3</text>
+  <text x="138" y="476" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">quyền sử dụng đất ở tại Long An [6].</text>
+  <circle cx="125" cy="506" r="3" fill="#0f766e"/>
+  <text x="138" y="511" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">Nếu chỉ anh được miễn, nghĩa vụ thuế tách theo từng người đồng sở hữu;</text>
+  <text x="138" y="533" fill="#243142" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14">nếu không có tỷ lệ hợp pháp thì chia bình quân [2].</text>
+
+  <rect x="132" y="562" width="584" height="70" rx="8" fill="#f2f6f8" stroke="#d5dee6"/>
+  <text x="150" y="588" fill="#0a5c56" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="800">Nguồn được truy xuất</text>
+  <text x="150" y="612" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">Thông tư 111/2013/TT-BTC · 6 citations · top_k=6 · classification=tax.pit_real_estate_exemption</text>
+
+  <rect x="50" y="688" width="704" height="34" rx="8" fill="#ffffff" stroke="#d5dee6"/>
+  <text x="70" y="710" fill="#617184" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13">Ask a legal question with facts, date, and desired answer style...</text>
+</svg>

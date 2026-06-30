@@ -6,6 +6,14 @@ Repository này hiện là prototype kỹ thuật đang chạy được, chưa p
 
 > Dự án phục vụ nghiên cứu pháp luật và phát triển sản phẩm. Nội dung sinh ra không thay thế tư vấn pháp lý từ chuyên gia.
 
+## Demo Hội Thoại
+
+Preview dưới đây mô phỏng cách hội thoại được hiển thị trong UI test local: câu hỏi pháp lý bằng tiếng Việt, câu trả lời có cấu trúc, và panel nguồn truy xuất để kiểm tra căn cứ.
+
+[![Law Assistant RAG chat demo](docs/assets/rag-demo-ui-preview.svg)](docs/rag-demo-conversations.md)
+
+Xem bản case study đầy đủ tại [Demo hội thoại RAG](docs/rag-demo-conversations.md).
+
 ## Tổng Quan
 
 ```mermaid
