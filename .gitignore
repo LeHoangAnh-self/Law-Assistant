@@ -36,6 +36,7 @@ rag-service/evaluation/**/rag_eval_results.jsonl
 data/
 data-backup/
 data_requires_update/
+dataset/vietnamese_legal_documents/creation/crawler/data_usable/
 
 # Local oversized dataset artifact (cannot be pushed to GitHub LFS > 2GB limit)
 data_usable/current_new/context.parquet

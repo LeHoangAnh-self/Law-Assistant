@@ -1,0 +1,29 @@
+services:
+  law-crawler-mysql:
+    image: mysql:8.4
+    container_name: law-crawler-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${LAW_CRAWLER_MYSQL_ROOT_PASSWORD:?set LAW_CRAWLER_MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${LAW_CRAWLER_MYSQL_DATABASE:-law_crawler}
+      MYSQL_USER: ${LAW_CRAWLER_MYSQL_USER:-law_crawler}
+      MYSQL_PASSWORD: ${LAW_CRAWLER_MYSQL_PASSWORD:?set LAW_CRAWLER_MYSQL_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - law-crawler-mysql-data:/var/lib/mysql
+
+volumes:
+  law-crawler-mysql-data:

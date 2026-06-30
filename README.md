@@ -10,18 +10,18 @@ Repository này hiện là prototype kỹ thuật đang chạy được, chưa p
 
 ```mermaid
 flowchart LR
-    A[Du lieu phap luat da chuan bi] --> B[law-service<br/>Spring Boot API]
-    B --> C[(MySQL<br/>Van ban + metadata + quan he)]
-    B --> D[(Redis<br/>Cache chi tiet)]
-    B --> E[[RabbitMQ<br/>Embedding events]]
-    E --> F[rag-service bridge]
-    F --> G[Celery workers]
-    G --> H[(Qdrant<br/>Vector index)]
-    I[Nguoi dung / UI / API client] --> J[rag-service<br/>FastAPI RAG]
+    A["Dữ liệu pháp luật đã chuẩn bị"] --> B["law-service<br/>API Spring Boot"]
+    B --> C[("MySQL<br/>Văn bản + siêu dữ liệu + quan hệ")]
+    B --> D[("Redis<br/>Cache chi tiết văn bản")]
+    B --> E[["RabbitMQ<br/>Sự kiện tạo embedding"]]
+    E --> F["Cầu nối rag-service"]
+    F --> G["Worker Celery"]
+    G --> H[("Qdrant<br/>Chỉ mục vector")]
+    I["Người dùng / UI / API client"] --> J["rag-service<br/>RAG FastAPI"]
     J --> B
     J --> H
-    J --> K[Embedding + Reranking + LLM]
-    K --> L[Cau tra loi tieng Viet<br/>kem nguon tham chieu]
+    J --> K["Mô hình embedding,<br/>reranking và LLM"]
+    K --> L["Câu trả lời tiếng Việt<br/>kèm nguồn tham chiếu"]
 ```
 
 ## Vì Sao Dự Án Này Cần Thiết
@@ -79,7 +79,7 @@ POST /api/documents/embedding-events
 - Rerank ứng viên truy xuất bằng CrossEncoder.
 - Phân loại một số nhóm câu hỏi pháp luật tiếng Việt để cải thiện retrieval.
 - Sinh câu trả lời qua LLM provider có thể cấu hình, mặc định dùng stub cho local development.
-- Trả về answer, rewritten query, classification, retrieval query và source references.
+- Trả về câu trả lời, truy vấn đã chuẩn hóa, phân loại câu hỏi, truy vấn retrieval và nguồn tham chiếu.
 - Có lệnh audit độ phủ indexing và evaluation runner.
 - Có document picker UI nhẹ tại `/documents`.
 - Có hook quan sát bằng Langfuse/OpenTelemetry.
@@ -109,15 +109,29 @@ POST /api/rag/ask
 
 ```mermaid
 pie showData
-    title Quy mo du lieu import hien tai
-    "Metadata rows" : 127267
-    "Content rows" : 127267
-    "Relationship rows" : 651966
+    title Quy mô dữ liệu đưa vào import
+    "Siêu dữ liệu văn bản" : 147965
+    "Nội dung cấp văn bản" : 147965
+    "Quan hệ văn bản" : 758489
+    "Mốc neo điều khoản" : 5072827
 ```
 
 Dữ liệu local đang nằm trong `data_usable/`.
 
-File chính:
+Thống kê hiện tại đọc trực tiếp từ các file Parquet:
+
+| Nhóm dữ liệu | File | Số dòng |
+| --- | --- | ---: |
+| Siêu dữ liệu văn bản | `data_usable/current_new/metadata.parquet` | `147965` |
+| Ngữ cảnh đầy đủ | `data_usable/current_new/context.parquet` | `5220792` |
+| Nội dung cấp văn bản trong ngữ cảnh | `context_type = DOCUMENT` | `147965` |
+| Quan hệ văn bản | `data_usable/current_new/relationships.parquet` | `758489` |
+| Mốc neo điều/khoản/điểm | `data_usable/current_new/anchors.parquet` | `5072827` |
+| Tài liệu sẵn sàng cho RAG | `data_usable/rag/law_documents.parquet` | `127267` |
+| Chunk sẵn sàng cho RAG | `data_usable/rag/law_chunks.parquet` | `1203686` |
+| Quan hệ sẵn sàng cho RAG | `data_usable/rag/law_relationships.parquet` | `651966` |
+
+File chính trong `data_usable/`:
 
 - `data_usable/current_new/metadata.parquet`
 - `data_usable/current_new/context.parquet`
@@ -131,11 +145,11 @@ File chính:
 
 `law-service` importer nhận được cả `content.parquet` hoặc `context.parquet` làm nguồn nội dung văn bản. Dataset hiện tại ở root dùng `context.parquet`.
 
-Kết quả import kỳ vọng:
+Kết quả import kỳ vọng cho bộ `current_new` hiện tại:
 
-- `metadataRows`: `127267`
-- `contentRows`: `127267`
-- `relationshipRows`: `651966`
+- `metadataRows`: `147965`
+- `contentRows`: `147965`
+- `relationshipRows`: `758489`
 
 Nếu commit file Parquet lớn lên GitHub, nên dùng Git LFS.
 
@@ -143,20 +157,20 @@ Nếu commit file Parquet lớn lên GitHub, nên dùng Git LFS.
 
 ```mermaid
 sequenceDiagram
-    participant U as User / UI
+    participant U as Người dùng / UI
     participant R as rag-service
     participant L as law-service
     participant Q as Qdrant
-    participant M as Embedding/Reranker/LLM
+    participant M as Mô hình AI
 
-    U->>R: Gui cau hoi tieng Viet
-    R->>M: Rewrite va classify cau hoi
-    R->>Q: Truy xuat vector candidates
-    R->>M: Rerank source candidates
-    R->>L: Lay metadata/chi tiet khi can
-    R->>M: Build prompt voi nguon truy xuat
-    M-->>R: Sinh cau tra loi
-    R-->>U: Answer + source references
+    U->>R: Gửi câu hỏi tiếng Việt
+    R->>M: Chuẩn hóa và phân loại câu hỏi
+    R->>Q: Truy xuất ứng viên bằng vector
+    R->>M: Sắp xếp lại nguồn phù hợp
+    R->>L: Lấy metadata và chi tiết khi cần
+    R->>M: Tạo prompt kèm nguồn truy xuất
+    M-->>R: Sinh câu trả lời
+    R-->>U: Trả lời kèm nguồn tham chiếu
 ```
 
 ## Cấu Trúc Repository
