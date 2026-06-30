@@ -18,6 +18,7 @@ def test_default_embedding_model_is_vietlegal_harrier() -> None:
     assert settings.embedding_model_name == "mainguyen9/vietlegal-harrier-0.6b"
     assert settings.embedding_dimension == 1024
     assert settings.embedding_query_instruction.startswith("Instruct:")
+    assert settings.reranker_model_name == "kiencnt2205/vietnamese-legal-reranker-bge-base"
     assert settings.llm_model == "luanngo/Qwen3-4B-VietNamese-Legal-Chat"
     assert settings.qdrant_delete_existing_chunks is False
     assert settings.chunk_size == 1500

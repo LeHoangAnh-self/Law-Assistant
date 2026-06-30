@@ -12,21 +12,16 @@ dataset/
 │   └── creation/
 │       ├── crawler/                         # Crawler VBPL/TVPL và exporter Parquet
 │       └── prepare_law_assistant_dataset.py # Script chuẩn bị dataset legacy/RAG
-└── baochinhphu_official_qa/
-    ├── data_raw/
-    ├── data_usable/
-    └── creation/
 ```
 
 ## Dataset Chính
 
 - `vietnamese_legal_documents`: corpus văn bản pháp luật Việt Nam dùng cho `law-service` import và `rag-service` indexing.
-- `baochinhphu_official_qa`: bộ Q&A chính thức từ Báo Chính phủ dùng cho evaluation, không phải corpus văn bản pháp luật độc lập.
 
 ## Quy Ước
 
 - `data_raw/`: lưu source capture bất biến nếu cần audit.
-- `data_usable/`: lưu artifact sạch, có thể export hoặc dùng trong test/evaluation.
+- `data_usable/`: lưu artifact sạch, có thể export hoặc dùng trong test.
 - `creation/`: lưu crawler, builder, script migration, audit note và tài liệu tái tạo dataset.
 
 ## Crawler Văn Bản Pháp Luật

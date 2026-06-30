@@ -88,7 +88,7 @@ POST /api/documents/embedding-events
 - Phân loại một số nhóm câu hỏi pháp luật tiếng Việt để cải thiện retrieval.
 - Sinh câu trả lời qua LLM provider có thể cấu hình, mặc định dùng stub cho local development.
 - Trả về câu trả lời, truy vấn đã chuẩn hóa, phân loại câu hỏi, truy vấn retrieval và nguồn tham chiếu.
-- Có lệnh audit độ phủ indexing và evaluation runner.
+- Có lệnh audit độ phủ indexing.
 - Có document picker UI nhẹ tại `/documents`.
 - Có hook quan sát bằng Langfuse/OpenTelemetry.
 
@@ -197,7 +197,7 @@ LawAssistant/
 | Async indexing | Celery, Redis, RabbitMQ bridge |
 | Vector store | Qdrant |
 | Embeddings | `mainguyen9/vietlegal-harrier-0.6b` |
-| Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| Reranking | `kiencnt2205/vietnamese-legal-reranker-bge-base` |
 | LLM integration | OpenAI-compatible/chat-completions style client có thể cấu hình, local stub mặc định |
 | Observability | Langfuse và OpenTelemetry hooks |
 
@@ -351,18 +351,6 @@ cd /home/lee/Documents/LawAssistant/rag-service
 source .venv/bin/activate
 pytest
 ruff check app tests
-```
-
-Chạy RAG evaluation với test set có sẵn:
-
-```bash
-cd /home/lee/Documents/LawAssistant/rag-service
-source .venv/bin/activate
-python -m rag_service.evaluation \
-  --questions-file evaluation/rag_test_set.json \
-  --limit 20 \
-  --top-k 5 \
-  --reset
 ```
 
 ## Giới Hạn Hiện Tại

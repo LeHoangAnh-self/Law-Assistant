@@ -11,7 +11,7 @@ It serves a browser UI and proxies requests to the running RAG API, so the page 
 - Citation cards with retrieved passages and local document links.
 - Local document reader with metadata, search, highlighted cited passage, and relationships.
 - OpenAI API key connection test from the UI.
-- Exportable JSON log for response evaluation and debugging.
+- Exportable JSON log for response debugging.
 
 ## Run
 

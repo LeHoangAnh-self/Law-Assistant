@@ -97,20 +97,6 @@ curl -X POST "http://localhost:8090/api/rag/ask" \
   -d '{"question":"Văn bản nào quy định về hiệu lực thi hành?","top_k":5}'
 ```
 
-## Evaluation
-
-Run evaluation on bundled test set:
-
-```bash
-python -m rag_service.evaluation \
-  --questions-file evaluation/rag_test_set.json \
-  --limit 20 \
-  --top-k 5 \
-  --reset
-```
-
-Generated `rag_eval_results.csv/jsonl` files are local artifacts and are ignored by git.
-
 ## Tests
 
 ```bash

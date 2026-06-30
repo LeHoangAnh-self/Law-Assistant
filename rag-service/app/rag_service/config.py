@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     embedding_device: str = "cpu"
     embedding_batch_size: int = Field(default=16, ge=1, le=256)
     embedding_local_files_only: bool = False
-    reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_model_name: str = "kiencnt2205/vietnamese-legal-reranker-bge-base"
     enable_reranker: bool = True
 
     chunk_size: int = Field(default=1500, ge=200, le=4000)
