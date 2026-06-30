@@ -1,121 +1,74 @@
 # Law Assistant
 
-Law Assistant is a local Vietnamese legal-document platform with two services:
+Law Assistant is a local Vietnamese legal assistant stack with:
 
-- `law-service`: Spring Boot API for legal-document metadata, content, relationships, and import.
-- `rag-service`: FastAPI retrieval service for chunk indexing, vector search, reranking, and answer generation.
-
-The prepared dataset lives in `data_usable/`.
+- `law-service`: Spring Boot API for legal documents and import.
+- `rag-service`: FastAPI RAG service for retrieval, reranking, and answer generation.
+- `UI_test`: optional browser chat UI for manual testing.
 
 ## Repository Layout
 
 ```text
-.
-├── data_usable/        # Final cleaned dataset
-├── law-service/        # Spring Boot API, MySQL importer, Redis cache, RabbitMQ events
-├── rag-service/        # FastAPI RAG service, Qdrant integration, Celery workers
-└── scripts/            # Dataset preparation utilities
+LawAssistant/
+├── law-service/
+├── rag-service/
+├── UI_test/
+├── data_usable/
+├── dataset/
+└── scripts/
 ```
 
-## Data
+## Prerequisites
 
-Use `data_usable/current` to import data into MySQL:
+- Java 19+
+- Maven
+- Python 3.11+
+- Docker + Docker Compose
 
-```text
-data_usable/current/metadata.parquet
-data_usable/current/content.parquet
-data_usable/current/relationships.parquet
-```
-
-Use `data_usable/rag` for retrieval and embedding workflows:
-
-```text
-data_usable/rag/law_documents.parquet
-data_usable/rag/law_chunks.parquet
-data_usable/rag/law_relationships.parquet
-```
-
-Dataset summary:
-
-- Documents: `127,267`
-- Cleaned relationships: `651,966`
-- RAG chunks: `1,203,686`
-- Chunking: `1,500` characters with `200` character overlap
-
-See [data_usable/README.md](data_usable/README.md) for details.
-
-## GitHub Data Note
-
-The Parquet files are large. This repository is configured to track `*.parquet` with Git LFS via `.gitattributes`.
-
-Before pushing the dataset to GitHub, install and enable Git LFS:
+## 1) Start Law Service
 
 ```bash
-git lfs install
-git lfs track "*.parquet"
-```
-
-Then commit `.gitattributes` together with the data files.
-
-## Quick Start
-
-### 1. Start the Law Service dependencies
-
-```bash
-cd law-service
-docker compose down -v
+cd /home/lee/Documents/LawAssistant/law-service
 docker compose up -d
-```
 
-Wait for MySQL:
-
-```bash
 until docker compose exec mysql mysqladmin ping -h localhost -ulaw -plaw --silent; do
   echo "waiting for mysql..."
   sleep 2
 done
-```
 
-### 2. Run the Law Service
-
-```bash
 mvn spring-boot:run
 ```
 
 Health check:
 
 ```bash
-curl "http://localhost:8080/actuator/health"
+curl http://localhost:8080/actuator/health
 ```
 
-### 3. Import the cleaned dataset
+## 2) Import Legal Documents
 
-Run this from `law-service` while the service is running:
+Run while `law-service` is running:
 
 ```bash
-curl -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current"
+curl -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current_new"
 ```
 
-Expected import counts:
+Expected totals:
 
-```json
-{
-  "metadataRows": 127267,
-  "contentRows": 127267,
-  "relationshipRows": 651966
-}
-```
+- `metadataRows`: `127267`
+- `contentRows`: `127267`
+- `relationshipRows`: `651966`
 
-Verify one document:
+Quick verify:
 
 ```bash
 curl "http://localhost:8080/api/documents/4260"
 ```
 
-### 4. Start the RAG Service
+## 3) Start RAG Service
 
 ```bash
-cd ../rag-service
+cd /home/lee/Documents/LawAssistant/rag-service
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -123,7 +76,13 @@ docker compose up -d
 uvicorn rag_service.main:app --app-dir app --reload --port 8090
 ```
 
-Ask a retrieval question:
+Health check:
+
+```bash
+curl http://localhost:8090/health
+```
+
+Ask a question:
 
 ```bash
 curl -X POST "http://localhost:8090/api/rag/ask" \
@@ -131,25 +90,39 @@ curl -X POST "http://localhost:8090/api/rag/ask" \
   -d '{"question":"Văn bản nào quy định về hiệu lực thi hành?","top_k":5}'
 ```
 
-## Useful Commands
-
-Run Java tests:
+## 4) Optional UI Test
 
 ```bash
-cd law-service
+cd /home/lee/Documents/LawAssistant/UI_test
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --reload --port 8091
+```
+
+Open `http://localhost:8091`.
+
+## Tests
+
+Law service:
+
+```bash
+cd /home/lee/Documents/LawAssistant/law-service
 mvn test
 ```
 
-Run Python tests:
+RAG service:
 
 ```bash
-cd rag-service
+cd /home/lee/Documents/LawAssistant/rag-service
 source .venv/bin/activate
 pytest
 ```
 
-Recreate the prepared dataset from source Parquet files, if source files are restored:
+## Data Notes
 
-```bash
-python3 scripts/prepare_law_assistant_dataset.py --input-dir data --output-dir data_usable
-```
+- Import input for `law-service`: `data_usable/current_new/`
+- RAG tables: `data_usable/rag/`
+- Canonical dataset workspace: `dataset/`
+
+If you commit Parquet files to GitHub, use Git LFS.

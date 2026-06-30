@@ -29,6 +29,8 @@ venv/
 # Runtime outputs
 rag-service/evaluation/rag_eval_results.csv
 rag-service/evaluation/rag_eval_results.jsonl
+rag-service/evaluation/**/rag_eval_results.csv
+rag-service/evaluation/**/rag_eval_results.jsonl
 
 # Temporary local data folders
 data/
