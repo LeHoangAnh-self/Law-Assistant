@@ -107,15 +107,6 @@ POST /api/rag/ask
 
 ## Quy Mô Dữ Liệu Hiện Tại
 
-```mermaid
-pie showData
-    title Quy mô dữ liệu đưa vào import
-    "Siêu dữ liệu văn bản" : 147965
-    "Nội dung cấp văn bản" : 147965
-    "Quan hệ văn bản" : 758489
-    "Mốc neo điều khoản" : 5072827
-```
-
 Dữ liệu local đang nằm trong `data_usable/`.
 
 Thống kê hiện tại đọc trực tiếp từ các file Parquet:
