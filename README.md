@@ -376,6 +376,7 @@ python -m rag_service.evaluation \
 
 ## Tài Liệu Thêm
 
+- [Demo hội thoại RAG](docs/rag-demo-conversations.md)
 - [law-service README](law-service/README.md)
 - [rag-service README](rag-service/README.md)
 - [UI_test README](UI_test/README.md)
