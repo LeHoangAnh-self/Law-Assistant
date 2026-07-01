@@ -97,6 +97,8 @@ class GovernmentQnaCitation(Base):
     document_number: Mapped[str | None] = mapped_column(String(255))
     document_title: Mapped[str | None] = mapped_column(String(1000))
     article_refs: Mapped[str | None] = mapped_column(String(1000))
+    clause_refs: Mapped[str | None] = mapped_column(String(1000))
+    point_refs: Mapped[str | None] = mapped_column(String(1000))
     matched_document_id: Mapped[int | None] = mapped_column(BIG_INT)
     matched_document_title: Mapped[str | None] = mapped_column(String(1500))
     matched_document_number: Mapped[str | None] = mapped_column(String(255))

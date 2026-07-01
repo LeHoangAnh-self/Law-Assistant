@@ -10,6 +10,8 @@ def build_legal_prompt(
     issue_label: str | None = None,
     required_source_checklist: list[str] | None = None,
     missing_required_sources: list[str] | None = None,
+    source_quality_lines: list[str] | None = None,
+    retrieval_warnings: list[str] | None = None,
 ) -> str:
     citation_blocks = "\n\n".join(
         f"[{index}] Văn bản {ref.document_id}"
@@ -37,6 +39,8 @@ def build_legal_prompt(
     issue_line = f"Issue classifier: {issue_label}.\n" if issue_label else ""
     required_lines = required_source_checklist or []
     missing_lines = missing_required_sources or []
+    quality_lines = source_quality_lines or []
+    warning_lines = retrieval_warnings or []
     checklist_block = (
         "Required-source checklist cho vấn đề này (các nguồn kiểm soát ưu tiên phải có trước khi kết luận):\n"
         + "\n".join(f"- {item}" for item in required_lines)
@@ -51,10 +55,47 @@ def build_legal_prompt(
         if missing_lines
         else ""
     )
+    quality_block = (
+        "Đánh giá chất lượng nguồn theo metadata truy xuất:\n"
+        + "\n".join(f"- {item}" for item in quality_lines)
+        + "\n\n"
+        if quality_lines
+        else ""
+    )
+    warning_block = (
+        "Cảnh báo truy xuất cần phản ánh trong mức chắc chắn của câu trả lời:\n"
+        + "\n".join(f"- {item}" for item in warning_lines)
+        + "\n\n"
+        if warning_lines
+        else ""
+    )
+    rag_goal_block = (
+        "Mục tiêu RAG áp dụng cho mọi lĩnh vực: trả lời đúng vấn đề thật phía sau câu hỏi, "
+        "dựa trên nguồn phù hợp nhất, còn hiệu lực/hiện hành nhất và có thẩm quyền nhất trong "
+        "các trích đoạn; áp dụng nguồn đó vào từng dữ kiện người dùng đưa ra; chỉ nêu bất định "
+        "khi thật sự cần; và đưa bước tiếp theo thực tế mà không bịa quy tắc ngoài nguồn. "
+        "Đừng chỉ khớp từ khóa. Hãy xác định issue kiểm soát trước khi trả lời: luật thì xác định "
+        "quyền/nghĩa vụ/ngoại lệ; y tế thì xác định guideline, chỉ định/chống chỉ định và mức cần "
+        "khám chuyên môn; tài chính thì xác định dữ liệu chính thức, rủi ro và giới hạn; kỹ thuật "
+        "thì xác định API/spec/runtime và lỗi hoặc quyết định kỹ thuật đang hỏi. "
+        "Thứ bậc nguồn theo lĩnh vực: luật ưu tiên luật/nghị quyết của Quốc hội, nghị định, thông tư, "
+        "hướng dẫn chính thức rồi mới đến bình luận; y tế ưu tiên guideline lâm sàng/cơ quan quản lý, "
+        "bằng chứng peer-reviewed rồi tài liệu bệnh viện; tài chính ưu tiên hồ sơ regulator, dữ liệu "
+        "chính thức của sàn/công ty rồi phân tích uy tín; kỹ thuật ưu tiên tài liệu chính thức, RFC/spec, "
+        "source code rồi mới đến blog/diễn đàn. Nếu nguồn thấp hơn mâu thuẫn nguồn cao hơn hoặc nguồn "
+        "hiện hành mâu thuẫn nguồn cũ, ưu tiên nguồn cao hơn/hiện hành hơn và nói rõ lý do. "
+        "Cấu trúc lập luận phải là: dữ kiện A khớp điều kiện X nên kết quả có khả năng là Y; dữ kiện B "
+        "kích hoạt ngoại lệ hoặc rủi ro Z nên cần kiểm tra Q. "
+        "Không lạm dụng câu 'chưa đủ căn cứ'. Chỉ dùng khi đã thiếu nguồn kiểm soát sau truy xuất, "
+        "nguồn không chứa quy tắc cần thiết, dữ kiện người dùng thiếu điểm quyết định, hoặc lĩnh vực "
+        "bắt buộc xác minh chuyên môn. Nếu nguồn kiểm soát trực tiếp đã có và dữ kiện người dùng khớp "
+        "điều kiện, hãy kết luận phù hợp với mức chắc chắn của nguồn, kèm ngoại lệ/rủi ro cụ thể.\n\n"
+    )
     return (
         "Bạn là trợ lý nghiên cứu pháp luật Việt Nam. Chỉ trả lời dựa trên các trích đoạn "
         "văn bản pháp luật được cung cấp. Trích dẫn nguồn ngay trong câu bằng ký hiệu như [1]. "
         "Nếu các trích đoạn không đủ căn cứ, hãy nói rõ thông tin còn thiếu và không suy đoán. "
+        f"{rag_goal_block}"
         "Hãy trả lời thân thiện với người đọc: nêu kết luận ngắn trước, giải thích căn cứ pháp lý "
         "bằng ngôn ngữ dễ hiểu, chỉ rõ điều/khoản hoặc vị trí nếu có, và trích một phần nội dung "
         "quan trọng từ văn bản khi cần để người đọc thấy căn cứ nằm ở đâu. "
@@ -105,8 +146,9 @@ def build_legal_prompt(
         "điều/khoản đó hết hiệu lực thì không dùng làm căn cứ chính. "
         "Cuối câu hoặc cuối ý phải có citation như [1], [2]. "
         "Nếu các nguồn có khác biệt hoặc chỉ liên quan một phần, hãy nói rõ mức độ chắc chắn. "
-        "Nếu checklist nguồn kiểm soát chưa đủ, phải nêu rõ thiếu nguồn nào và chỉ đưa kết luận tạm thời, "
-        "không kết luận dứt khoát theo hướng có lợi/bất lợi cho bất kỳ bên nào. "
+        "Nếu checklist nguồn kiểm soát chưa đủ, phải nêu rõ thiếu nguồn nào. Tuy nhiên, nếu một nguồn "
+        "kiểm soát trực tiếp trong checklist đã có và đủ để trả lời một phần vấn đề, hãy kết luận phần "
+        "đó theo nguồn đang có, rồi giới hạn phần còn lại thay vì phủ định toàn bộ câu trả lời. "
         "Giữ câu trả lời ngắn gọn, ưu tiên kết luận rõ; không quá khoảng 650 từ. "
         "Không kết thúc giữa câu hoặc giữa ý. "
         f"Trả lời bằng {answer_language}.\n\n"
@@ -114,6 +156,8 @@ def build_legal_prompt(
         f"{issue_line}"
         f"{checklist_block}"
         f"{missing_block}"
+        f"{quality_block}"
+        f"{warning_block}"
         f"{as_of_line}"
         f"Câu hỏi hiện tại cần trả lời:\n{question}\n\n"
         f"Các trích đoạn pháp luật:\n{citation_blocks}\n\n"

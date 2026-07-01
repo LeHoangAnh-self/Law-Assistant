@@ -5,6 +5,7 @@ import html
 import json
 import logging
 import re
+import sys
 import time
 import zipfile
 from dataclasses import dataclass
@@ -35,10 +36,9 @@ DOCUMENT_NUMBER_RE = re.compile(
     r"\b\d{1,4}/\d{4}/[A-ZĐÂÊÔƠƯ0-9.-]+(?:-[A-ZĐÂÊÔƠƯ0-9.-]+)*\b",
     re.IGNORECASE,
 )
-ARTICLE_REF_RE = re.compile(
-    r"\b(?:Điều|Khoản|điểm)\s+\d+[a-zA-Z]?(?:\s*,?\s*(?:khoản|điểm)\s+\d+[a-zA-Z]?)*",
-    re.IGNORECASE,
-)
+ARTICLE_REF_RE = re.compile(r"\bĐiều\s+\d+[a-zA-Z]?", re.IGNORECASE)
+CLAUSE_REF_RE = re.compile(r"\bkhoản\s+\d+[a-zA-Z]?", re.IGNORECASE)
+POINT_REF_RE = re.compile(r"\bđiểm\s+[a-zđ]", re.IGNORECASE)
 NUMBERED_DOC_RE = re.compile(
     r"(?P<raw>(?P<type>Luật|Bộ luật|Nghị định|Thông tư liên tịch|Thông tư|Quyết định|Nghị quyết|Công văn|Pháp lệnh)"
     r"[^.;:\n]{0,120}?\b(?:số\s+)?(?P<number>\d{1,4}/\d{4}/[A-ZĐÂÊÔƠƯ0-9.-]+(?:-[A-ZĐÂÊÔƠƯ0-9.-]+)*)"
@@ -57,10 +57,13 @@ ANSWER_MARKER_RE = re.compile(
 
 @dataclass(frozen=True)
 class QnaCrawlSummary:
+    checked: int = 0
     fetched: int = 0
     persisted: int = 0
     skipped: int = 0
     failed: int = 0
+    non_qna: int = 0
+    not_found: int = 0
     citations: int = 0
     matched_citations: int = 0
     missing_citations: int = 0
@@ -72,6 +75,8 @@ class ParsedCitation:
     document_number: str | None
     document_title: str | None
     article_refs: tuple[str, ...]
+    clause_refs: tuple[str, ...] = ()
+    point_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,42 +98,160 @@ def crawl_bachkhoaluat_government_qna(
     limit: int | None = None,
     delay_seconds: float = 0.25,
     require_answer: bool = True,
+    progress_every: int = 25,
+    discovery_mode: str = "listing",
+    id_start: int | None = None,
+    id_end: int | None = None,
+    max_consecutive_misses: int | None = None,
 ) -> QnaCrawlSummary:
     http = _create_http_session(settings, cookie_file)
-    api_items = _fetch_bachkhoaluat_qna_listing(http, settings, limit=limit)
-    summary = QnaCrawlSummary(fetched=len(api_items))
+    if discovery_mode == "listing":
+        api_items = _fetch_bachkhoaluat_qna_listing(http, settings, limit=limit)
+        _print_progress(f"Fetched Q&A listing: {len(api_items):,} items")
+        return _crawl_api_items(
+            qna_session_factory,
+            document_session_factory,
+            http,
+            settings,
+            api_items,
+            delay_seconds=delay_seconds,
+            require_answer=require_answer,
+            progress_every=progress_every,
+        )
+    if discovery_mode == "id-range":
+        return _crawl_id_range(
+            qna_session_factory,
+            document_session_factory,
+            http,
+            settings,
+            id_start=id_start,
+            id_end=id_end,
+            limit=limit,
+            delay_seconds=delay_seconds,
+            require_answer=require_answer,
+            progress_every=progress_every,
+            max_consecutive_misses=max_consecutive_misses,
+        )
+    raise ValueError(f"Unsupported discovery_mode: {discovery_mode}")
 
-    for item in api_items:
+
+def _crawl_api_items(
+    qna_session_factory: sessionmaker[Session],
+    document_session_factory: sessionmaker[Session],
+    http: requests.Session,
+    settings: Settings,
+    api_items: list[dict[str, Any]],
+    *,
+    delay_seconds: float,
+    require_answer: bool,
+    progress_every: int,
+) -> QnaCrawlSummary:
+    summary = QnaCrawlSummary(fetched=len(api_items))
+    for index, item in enumerate(api_items, start=1):
         try:
-            qna = _build_qna_payload(http, settings, item)
+            qna = _build_qna_payload_from_listing_item(http, settings, item)
             if require_answer and not qna.get("answer_text"):
-                summary = _add_summary(summary, skipped=1)
+                summary = _add_summary(summary, checked=1, skipped=1)
                 LOGGER.warning("Skipping Q&A id=%s because answer text could not be fetched", item.get("id"))
                 continue
-            citations = extract_legal_citations(
-                "\n".join(
-                    value
-                    for value in (qna.get("question_text"), qna.get("answer_text"), qna.get("summary_text"))
-                    if value
-                )
-            )
-            with qna_session_factory.begin() as qna_session:
-                with document_session_factory() as document_session:
-                    qna_item = persist_government_qna_item(qna_session, document_session, qna, citations)
-                summary = _add_summary(
-                    summary,
-                    persisted=1,
-                    citations=qna_item.citation_count,
-                    matched_citations=qna_item.matched_citation_count,
-                    missing_citations=qna_item.missing_citation_count,
-                )
+            summary = _persist_qna_payload(qna_session_factory, document_session_factory, qna, _add_summary(summary, checked=1))
         except Exception as exc:
-            summary = _add_summary(summary, failed=1)
+            summary = _add_summary(summary, checked=1, failed=1)
             LOGGER.exception("Failed to crawl Q&A id=%s: %s", item.get("id"), exc)
+        if progress_every > 0 and (index == 1 or index % progress_every == 0 or index == len(api_items)):
+            _print_crawl_progress(index, len(api_items), summary)
+        if delay_seconds > 0:
+            time.sleep(delay_seconds)
+    return summary
+
+
+def _crawl_id_range(
+    qna_session_factory: sessionmaker[Session],
+    document_session_factory: sessionmaker[Session],
+    http: requests.Session,
+    settings: Settings,
+    *,
+    id_start: int | None,
+    id_end: int | None,
+    limit: int | None,
+    delay_seconds: float,
+    require_answer: bool,
+    progress_every: int,
+    max_consecutive_misses: int | None,
+) -> QnaCrawlSummary:
+    if id_start is None:
+        id_start = _latest_bachkhoaluat_qna_id(http, settings)
+    if id_end is None:
+        id_end = 1
+    step = -1 if id_start >= id_end else 1
+    total_ids = abs(id_start - id_end) + 1
+    _print_progress(f"Scanning detail IDs from {id_start:,} to {id_end:,} ({total_ids:,} ids)")
+
+    summary = QnaCrawlSummary()
+    consecutive_misses = 0
+    persisted_limit = limit if limit is not None and limit > 0 else None
+
+    for index, external_id in enumerate(range(id_start, id_end + step, step), start=1):
+        if persisted_limit is not None and summary.persisted >= persisted_limit:
+            _print_progress(f"Stopping after persisted limit: {persisted_limit:,}")
+            break
+        if max_consecutive_misses is not None and consecutive_misses >= max_consecutive_misses:
+            _print_progress(f"Stopping after {consecutive_misses:,} consecutive missing/non-Q&A IDs")
+            break
+        try:
+            detail = _fetch_bachkhoaluat_detail_optional(http, settings, external_id)
+            summary = _add_summary(summary, checked=1)
+            if detail is None:
+                consecutive_misses += 1
+                summary = _add_summary(summary, not_found=1)
+            elif str(detail.get("idFeature")) != BACHKHOALUAT_QNA_FEATURE_ID:
+                consecutive_misses += 1
+                summary = _add_summary(summary, non_qna=1)
+            else:
+                consecutive_misses = 0
+                qna = _build_qna_payload_from_detail(http, settings, detail)
+                if require_answer and not qna.get("answer_text"):
+                    summary = _add_summary(summary, fetched=1, skipped=1)
+                    LOGGER.warning("Skipping Q&A id=%s because answer text could not be fetched", external_id)
+                else:
+                    summary = _add_summary(summary, fetched=1)
+                    summary = _persist_qna_payload(qna_session_factory, document_session_factory, qna, summary)
+        except Exception as exc:
+            consecutive_misses = 0
+            summary = _add_summary(summary, checked=1, failed=1)
+            LOGGER.exception("Failed to crawl detail id=%s: %s", external_id, exc)
+        if progress_every > 0 and (index == 1 or index % progress_every == 0):
+            _print_crawl_progress(index, total_ids, summary)
         if delay_seconds > 0:
             time.sleep(delay_seconds)
 
     return summary
+
+
+def _persist_qna_payload(
+    qna_session_factory: sessionmaker[Session],
+    document_session_factory: sessionmaker[Session],
+    qna: dict[str, Any],
+    summary: QnaCrawlSummary,
+) -> QnaCrawlSummary:
+    citations = extract_legal_citations(
+        "\n".join(
+            value
+            for value in (qna.get("question_text"), qna.get("answer_text"), qna.get("summary_text"))
+            if value
+        )
+    )
+    with qna_session_factory.begin() as qna_session:
+        with document_session_factory() as document_session:
+            qna_item = persist_government_qna_item(qna_session, document_session, qna, citations)
+        return _add_summary(
+            summary,
+            checked=0,
+            persisted=1,
+            citations=qna_item.citation_count,
+            matched_citations=qna_item.matched_citation_count,
+            missing_citations=qna_item.missing_citation_count,
+        )
 
 
 def persist_government_qna_item(
@@ -185,6 +308,8 @@ def persist_government_qna_item(
                 document_number=citation.document_number,
                 document_title=citation.document_title,
                 article_refs=", ".join(citation.article_refs) or None,
+                clause_refs=", ".join(citation.clause_refs) or None,
+                point_refs=", ".join(citation.point_refs) or None,
                 matched_document_id=match.document_id,
                 matched_document_title=match.document_title,
                 matched_document_number=match.document_number,
@@ -223,6 +348,8 @@ def extract_legal_citations(text: str) -> list[ParsedCitation]:
                 document_number=_normalize_document_number(match.group("number")),
                 document_title=_infer_document_title(raw),
                 article_refs=tuple(_extract_article_refs_nearby(text, match.start(), match.end())),
+                clause_refs=tuple(_extract_clause_refs_nearby(text, match.start(), match.end())),
+                point_refs=tuple(_extract_point_refs_nearby(text, match.start(), match.end())),
             )
         )
 
@@ -239,6 +366,8 @@ def extract_legal_citations(text: str) -> list[ParsedCitation]:
                 document_number=None,
                 document_title=title,
                 article_refs=tuple(_extract_article_refs_nearby(text, match.start(), match.end())),
+                clause_refs=tuple(_extract_clause_refs_nearby(text, match.start(), match.end())),
+                point_refs=tuple(_extract_point_refs_nearby(text, match.start(), match.end())),
             )
         )
 
@@ -250,9 +379,13 @@ def extract_legal_citations(text: str) -> list[ParsedCitation]:
     return list(deduped.values())
 
 
-def _build_qna_payload(http: requests.Session, settings: Settings, item: dict[str, Any]) -> dict[str, Any]:
+def _build_qna_payload_from_listing_item(http: requests.Session, settings: Settings, item: dict[str, Any]) -> dict[str, Any]:
     detail = _fetch_bachkhoaluat_detail(http, settings, int(item["id"]))
     data = {**item, **detail}
+    return _build_qna_payload_from_detail(http, settings, data)
+
+
+def _build_qna_payload_from_detail(http: requests.Session, settings: Settings, data: dict[str, Any]) -> dict[str, Any]:
     detail_url = _bachkhoaluat_detail_url(data)
     original_url = data.get("linkTrichDan")
     source_page = _fetch_government_source_page(http, settings, original_url) if original_url else {}
@@ -307,6 +440,11 @@ def _fetch_bachkhoaluat_qna_listing(
         )
         data = first_payload.get("data") or {}
     items = list(data.get("result") or [])
+    if limit is None and total > len(items):
+        _print_progress(
+            f"Warning: BachKhoaLuat listing API returned {len(items):,}/{total:,} items. "
+            "The endpoint appears capped; this run will crawl only returned listing items."
+        )
     return items[:limit] if limit is not None else items
 
 
@@ -317,6 +455,34 @@ def _fetch_bachkhoaluat_detail(http: requests.Session, settings: Settings, exter
         settings,
     )
     return payload.get("data") or {}
+
+
+def _fetch_bachkhoaluat_detail_optional(
+    http: requests.Session,
+    settings: Settings,
+    external_id: int,
+) -> dict[str, Any] | None:
+    url = f"{BACHKHOALUAT_API_BASE_URL}/businessEssential/business-essential/{external_id}"
+    response = http.get(url, headers=_headers(settings, accept="application/json"), timeout=settings.timeout_seconds)
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("status") == 404:
+        return None
+    if payload.get("status") not in (None, 200):
+        raise RuntimeError(f"BachKhoaLuat detail returned status={payload.get('status')} message={payload.get('message')}")
+    return payload.get("data") or None
+
+
+def _latest_bachkhoaluat_qna_id(http: requests.Session, settings: Settings) -> int:
+    items = _fetch_bachkhoaluat_qna_listing(http, settings, limit=1)
+    if not items:
+        raise RuntimeError("Could not discover latest Q&A id from listing endpoint")
+    latest_id = _safe_int(items[0].get("id"))
+    if latest_id is None:
+        raise RuntimeError(f"Latest Q&A listing item has invalid id: {items[0].get('id')!r}")
+    return latest_id
 
 
 def _fetch_government_source_page(http: requests.Session, settings: Settings, url: str | None) -> dict[str, str | None]:
@@ -469,7 +635,17 @@ def _first_text(elements) -> str | None:
 
 def _extract_article_refs_nearby(text: str, start: int, end: int) -> list[str]:
     window = text[max(0, start - 120) : min(len(text), end + 80)]
-    return [_clean_citation_text(match.group(0)) for match in ARTICLE_REF_RE.finditer(window)]
+    return list(dict.fromkeys(_clean_citation_text(match.group(0)) for match in ARTICLE_REF_RE.finditer(window)))
+
+
+def _extract_clause_refs_nearby(text: str, start: int, end: int) -> list[str]:
+    window = text[max(0, start - 120) : min(len(text), end + 80)]
+    return list(dict.fromkeys(_clean_citation_text(match.group(0)) for match in CLAUSE_REF_RE.finditer(window)))
+
+
+def _extract_point_refs_nearby(text: str, start: int, end: int) -> list[str]:
+    window = text[max(0, start - 120) : min(len(text), end + 80)]
+    return list(dict.fromkeys(_clean_citation_text(match.group(0)) for match in POINT_REF_RE.finditer(window)))
 
 
 def _infer_document_title(raw: str) -> str | None:
@@ -533,3 +709,17 @@ def _add_summary(summary: QnaCrawlSummary, **updates: int) -> QnaCrawlSummary:
     for key, value in updates.items():
         values[key] += value
     return QnaCrawlSummary(**values)
+
+
+def _print_progress(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
+def _print_crawl_progress(index: int, total: int, summary: QnaCrawlSummary) -> None:
+    _print_progress(
+        f"Processed {index:,}/{total:,}: checked={summary.checked:,} fetched={summary.fetched:,} "
+        f"persisted={summary.persisted:,} skipped={summary.skipped:,} failed={summary.failed:,} "
+        f"not_found={summary.not_found:,} non_qna={summary.non_qna:,} "
+        f"citations={summary.citations:,} matched={summary.matched_citations:,} "
+        f"missing={summary.missing_citations:,}"
+    )

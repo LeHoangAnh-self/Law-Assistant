@@ -25,6 +25,8 @@ def test_prompt_contains_question_and_citations() -> None:
         issue_label="labor: resignation",
         required_source_checklist=["Bộ luật Lao động 2019 Điều 35"],
         missing_required_sources=["Bộ luật Lao động 2019 Điều 40"],
+        source_quality_lines=["[1] Bộ luật/Luật/Nghị quyết của Quốc hội; phù hợp hiệu lực"],
+        retrieval_warnings=["Thiếu một số nguồn kiểm soát bắt buộc cho issue đã phân loại."],
     )
 
     assert "Văn bản này còn hiệu lực không?" in prompt
@@ -38,6 +40,13 @@ def test_prompt_contains_question_and_citations() -> None:
     assert "tách phần nghĩa vụ theo tỷ lệ sở hữu" in prompt
     assert "nguồn cụ thể nhất và trực tiếp nhất" in prompt
     assert "không quá khoảng 650 từ" in prompt
+    assert "Mục tiêu RAG áp dụng cho mọi lĩnh vực" in prompt
+    assert "Đừng chỉ khớp từ khóa" in prompt
+    assert "Thứ bậc nguồn theo lĩnh vực" in prompt
+    assert "luật ưu tiên luật/nghị quyết của Quốc hội, nghị định, thông tư" in prompt
+    assert "kỹ thuật ưu tiên tài liệu chính thức, RFC/spec, source code" in prompt
+    assert "Không lạm dụng câu 'chưa đủ căn cứ'" in prompt
+    assert "nếu một nguồn kiểm soát trực tiếp trong checklist đã có" in prompt
     assert "'đủ điều kiện', 'không đủ điều kiện', hoặc 'chưa đủ dữ kiện'" in prompt
     assert "Luật làm nền tảng, Nghị định nếu" in prompt
     assert "miễn thuế nhà ở duy nhất + đồng sở hữu" in prompt
@@ -48,5 +57,7 @@ def test_prompt_contains_question_and_citations() -> None:
     assert "không cảnh báo chung chung" in prompt
     assert "Issue classifier:" in prompt
     assert "Required-source checklist" in prompt
+    assert "Đánh giá chất lượng nguồn theo metadata truy xuất" in prompt
+    assert "Cảnh báo truy xuất cần phản ánh trong mức chắc chắn" in prompt
     assert "Nếu checklist nguồn kiểm soát chưa đủ" in prompt
     assert "Không viết đoạn, tiêu đề hoặc câu bắt đầu bằng 'Tự kiểm tra:'" in prompt

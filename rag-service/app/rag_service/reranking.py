@@ -1,7 +1,8 @@
-from functools import cached_property
 from datetime import date
+from functools import cached_property
 
 from rag_service.models import SourceReference
+from rag_service.source_policy import authority_score_bonus
 
 
 class CrossEncoderReranker:
@@ -53,6 +54,7 @@ class CrossEncoderReranker:
             ]
         ).lower()
         bonus = 0.0
+        bonus += authority_score_bonus(reference)
 
         if reference.validity_status and "hết hiệu lực toàn bộ" in reference.validity_status.lower():
             bonus -= 4.0

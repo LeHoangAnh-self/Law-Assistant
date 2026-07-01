@@ -185,6 +185,22 @@ class QdrantVectorStore:
             key=self._chunk_sort_key,
         )
 
+    def get_chunks_by_document_number(
+        self,
+        document_number: str,
+        issued_date_lte: date | None = None,
+        limit: int = 5000,
+    ) -> list[SourceReference]:
+        self.ensure_collection()
+        return sorted(
+            self._scroll_payloads(
+                limit=limit,
+                issued_date_lte=issued_date_lte,
+                filters={"document_number": document_number},
+            ),
+            key=self._chunk_sort_key,
+        )
+
     @classmethod
     def get_adjacent_chunks(
         cls,

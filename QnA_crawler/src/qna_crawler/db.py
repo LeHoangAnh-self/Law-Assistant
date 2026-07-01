@@ -84,6 +84,8 @@ def _run_mysql_compat_migrations(engine: Engine) -> None:
                 document_number varchar(255),
                 document_title varchar(1000),
                 article_refs varchar(1000),
+                clause_refs varchar(1000),
+                point_refs varchar(1000),
                 matched_document_id bigint,
                 matched_document_title varchar(1500),
                 matched_document_number varchar(255),
@@ -118,6 +120,18 @@ def _run_mysql_compat_migrations(engine: Engine) -> None:
             "government_qna_citations",
             "matched_document_source",
             "varchar(2048)",
+        )
+        _add_column_if_missing(
+            connection,
+            "government_qna_citations",
+            "clause_refs",
+            "varchar(1000)",
+        )
+        _add_column_if_missing(
+            connection,
+            "government_qna_citations",
+            "point_refs",
+            "varchar(1000)",
         )
 
 

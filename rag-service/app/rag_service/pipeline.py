@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import date
 
 from rag_service.config import Settings
@@ -7,7 +8,24 @@ from rag_service.llm import LlmClient
 from rag_service.models import AskRequest, AskResponse
 from rag_service.prompting import build_legal_prompt
 from rag_service.reranking import CrossEncoderReranker
+from rag_service.source_policy import build_retrieval_diagnostics, source_quality_lines
 from rag_service.vector_store import QdrantVectorStore
+
+DOCUMENT_NUMBER_RE = re.compile(
+    r"\b\d{1,4}/\d{4}/[A-ZĐÂÊÔƠƯ0-9.-]+(?:-[A-ZĐÂÊÔƠƯ0-9.-]+)*\b",
+    re.IGNORECASE,
+)
+ARTICLE_REF_RE = re.compile(r"\bĐiều\s+(?P<number>\d+[a-zA-Z]?)\b", re.IGNORECASE)
+CLAUSE_REF_RE = re.compile(r"\bkhoản\s+(?P<number>\d+[a-zA-Z]?)\b", re.IGNORECASE)
+POINT_REF_RE = re.compile(r"\bđiểm\s+(?P<number>[a-zđ])\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class ExplicitLegalCitation:
+    document_number: str
+    article_numbers: tuple[str, ...] = ()
+    clause_numbers: tuple[str, ...] = ()
+    point_numbers: tuple[str, ...] = ()
 
 
 class RagPipeline:
@@ -91,6 +109,11 @@ class RagPipeline:
                 as_of_date=as_of_date,
             )
         )
+        explicit_citation_references = self._retrieve_explicit_citation_sources(
+            rewritten_query,
+            as_of_date=as_of_date,
+        )
+        candidates.extend(explicit_citation_references)
         candidates = self._dedupe_candidates(candidates)
         candidates.extend(
             self._expand_adjacent_sections(
@@ -111,8 +134,22 @@ class RagPipeline:
             classification=classification,
             limit=request.top_k,
         )
+        references = self._ensure_explicit_citation_references(
+            references,
+            explicit_citation_references,
+            limit=request.top_k,
+        )
         required_source_checklist = self._required_source_checklist(rewritten_query, classification)
-        missing_required_sources = self._missing_required_source_labels(rewritten_query, classification, references)
+        missing_required_sources = self._missing_required_source_labels(
+            rewritten_query,
+            classification,
+            references,
+        )
+        retrieval_diagnostics = build_retrieval_diagnostics(
+            references,
+            missing_required_sources=missing_required_sources,
+            as_of_date=as_of_date,
+        )
         prompt = build_legal_prompt(
             request.question,
             references,
@@ -122,6 +159,8 @@ class RagPipeline:
             issue_label=self.ISSUE_LABELS.get(classification, classification),
             required_source_checklist=required_source_checklist,
             missing_required_sources=missing_required_sources,
+            source_quality_lines=source_quality_lines(references, as_of_date=as_of_date),
+            retrieval_warnings=list(retrieval_diagnostics.warnings),
         )
         answer = await self.llm_client.generate(prompt)
         if not self._looks_complete(answer):
@@ -137,6 +176,12 @@ class RagPipeline:
             classification=classification,
             references=references,
             retrieval_query=retrieval_query,
+            retrieval_diagnostics={
+                "authoritative_source_count": retrieval_diagnostics.authoritative_source_count,
+                "expired_source_count": retrieval_diagnostics.expired_source_count,
+                "missing_required_sources": list(retrieval_diagnostics.missing_required_sources),
+                "warnings": list(retrieval_diagnostics.warnings),
+            },
         )
 
     @staticmethod
@@ -251,7 +296,9 @@ class RagPipeline:
             queries.append("chuyển nhượng bất động sản cá nhân cư trú thuế TNCN miễn thuế nhà ở duy nhất")
         if classification.startswith("labor."):
             queries.append("Bộ luật Lao động 2019 người lao động đơn phương chấm dứt hợp đồng lao động")
-            if any(term in lowered for term in ["nghỉ", "nghỉ việc", "báo trước", "45 ngày"]):
+            if classification == "labor.resignation" or any(
+                term in lowered for term in ["nghỉ", "nghỉ việc", "báo trước", "45 ngày"]
+            ):
                 queries.extend(
                     [
                         "Điều 35 Bộ luật Lao động 2019 người lao động đơn phương chấm dứt hợp đồng không cần báo trước",
@@ -260,11 +307,19 @@ class RagPipeline:
                         "Điều 35 Bộ luật Lao động 2019 trả lương không đúng thời hạn địa điểm làm việc không đúng thỏa thuận không cần báo trước",
                     ]
                 )
-            if any(term in lowered for term in ["trái luật", "bồi thường", "nửa tháng", "không báo trước"]):
+            if classification == "labor.resignation" or any(
+                term in lowered for term in ["trái luật", "trái pháp luật", "bồi thường", "nửa tháng", "không báo trước"]
+            ):
                 queries.append("Điều 40 Bộ luật Lao động 2019 nghĩa vụ người lao động đơn phương chấm dứt hợp đồng trái pháp luật")
-            if any(term in lowered for term in ["giữ lương", "lương tháng cuối", "chốt sổ", "bhxh", "bảo hiểm xã hội"]):
+            if classification == "labor.resignation" or any(
+                term in lowered
+                for term in ["giữ lương", "giữ tiền lương", "lương tháng cuối", "lương cuối", "chốt sổ", "bhxh", "bảo hiểm xã hội"]
+            ):
                 queries.append("Điều 48 Bộ luật Lao động 2019 thanh toán lương xác nhận thời gian đóng bảo hiểm xã hội khi chấm dứt hợp đồng")
-            if any(term in lowered for term in ["trả lương trễ", "trả lương chậm", "trễ hơn", "chậm lương"]):
+            if classification == "labor.resignation" or any(
+                term in lowered
+                for term in ["trả lương trễ", "trả lương chậm", "trễ hơn", "chậm lương", "lương chậm", "trả lương muộn", "lương muộn"]
+            ):
                 queries.append("Điều 97 Bộ luật Lao động 2019 trả lương chậm quá 15 ngày đền bù lãi")
         if classification == "land_housing.transfer":
             queries.extend(
@@ -340,7 +395,7 @@ class RagPipeline:
                 ]
             )
         if classification.startswith("labor."):
-            terms.extend(self._labor_required_terms(question))
+            terms.extend(self._labor_required_terms(question, classification))
         if classification == "land_housing.transfer":
             terms.extend(
                 [
@@ -392,12 +447,165 @@ class RagPipeline:
         labor_matches = []
         if classification.startswith("labor."):
             labor_matches = self.vector_store.search_payload_text(
-                terms=self._labor_required_terms(question),
+                terms=self._labor_required_terms(question, classification),
                 limit=24,
                 issued_date_lte=as_of_date,
                 document_numbers=["45/2019/QH14"],
             )
         return general_matches + circular_111_matches + labor_matches
+
+    def _retrieve_explicit_citation_sources(
+        self,
+        question: str,
+        as_of_date: date | None,
+    ):
+        if not hasattr(self.vector_store, "get_chunks_by_document_number"):
+            return []
+        citations = self._extract_explicit_legal_citations(question)
+        if not citations:
+            return []
+
+        references = []
+        for citation in citations:
+            chunks = self.vector_store.get_chunks_by_document_number(
+                citation.document_number,
+                issued_date_lte=as_of_date,
+            )
+            if not chunks:
+                continue
+            references.extend(self._select_cited_chunks(chunks, citation))
+        return self._dedupe_candidates(references)
+
+    @classmethod
+    def _extract_explicit_legal_citations(cls, question: str) -> list[ExplicitLegalCitation]:
+        citations: list[ExplicitLegalCitation] = []
+        for match in DOCUMENT_NUMBER_RE.finditer(question):
+            document_number = cls._normalize_document_number(match.group(0))
+            window_start = max(0, match.start() - 260)
+            window_end = min(len(question), match.end() + 220)
+            window = question[window_start:window_end]
+            citations.append(
+                ExplicitLegalCitation(
+                    document_number=document_number,
+                    article_numbers=tuple(dict.fromkeys(cls._normalize_ref_number(m.group("number")) for m in ARTICLE_REF_RE.finditer(window))),
+                    clause_numbers=tuple(dict.fromkeys(cls._normalize_ref_number(m.group("number")) for m in CLAUSE_REF_RE.finditer(window))),
+                    point_numbers=tuple(dict.fromkeys(cls._normalize_point_label(m.group("number")) for m in POINT_REF_RE.finditer(window))),
+                )
+            )
+        deduped: dict[str, ExplicitLegalCitation] = {}
+        for citation in citations:
+            existing = deduped.get(citation.document_number)
+            if existing is None:
+                deduped[citation.document_number] = citation
+                continue
+            deduped[citation.document_number] = ExplicitLegalCitation(
+                document_number=citation.document_number,
+                article_numbers=tuple(dict.fromkeys(existing.article_numbers + citation.article_numbers)),
+                clause_numbers=tuple(dict.fromkeys(existing.clause_numbers + citation.clause_numbers)),
+                point_numbers=tuple(dict.fromkeys(existing.point_numbers + citation.point_numbers)),
+            )
+        return list(deduped.values())
+
+    @classmethod
+    def _select_cited_chunks(cls, chunks, citation: ExplicitLegalCitation):
+        selected = []
+        if citation.article_numbers:
+            for article_number in citation.article_numbers:
+                article_matches = [chunk for chunk in chunks if cls._reference_matches_article(chunk, article_number)]
+                if not article_matches:
+                    continue
+                selected.extend(cls._rank_cited_article_matches(article_matches, citation))
+        else:
+            selected.extend(chunks[:3])
+
+        if not selected and citation.article_numbers:
+            selected.extend(cls._fallback_text_matches(chunks, citation))
+        if not selected:
+            selected.extend(chunks[:1])
+
+        ranked = []
+        for index, reference in enumerate(selected):
+            ranked.append(reference.model_copy(update={"score": max(reference.score, 1000.0 - index)}))
+        return cls._dedupe_candidates(ranked)
+
+    @classmethod
+    def _rank_cited_article_matches(cls, article_matches, citation: ExplicitLegalCitation):
+        def score(reference) -> tuple[int, int]:
+            haystack = cls._reference_haystack(reference)
+            value = 0
+            if reference.article_number:
+                value += 20
+            if citation.clause_numbers and any(cls._reference_matches_clause(reference, clause) for clause in citation.clause_numbers):
+                value += 15
+            if citation.point_numbers and any(cls._reference_matches_point(reference, point) for point in citation.point_numbers):
+                value += 10
+            if citation.clause_numbers and any(f"khoản {clause}" in haystack for clause in citation.clause_numbers):
+                value += 5
+            if citation.point_numbers and any(f"điểm {point}" in haystack for point in citation.point_numbers):
+                value += 3
+            return (value, -cls._chunk_index(reference))
+
+        ranked = sorted(article_matches, key=score, reverse=True)
+        if citation.clause_numbers or citation.point_numbers:
+            precise = [
+                reference
+                for reference in ranked
+                if (not citation.clause_numbers or any(cls._reference_matches_clause(reference, clause) for clause in citation.clause_numbers))
+                and (not citation.point_numbers or any(cls._reference_matches_point(reference, point) for point in citation.point_numbers))
+            ]
+            if precise:
+                return precise[:4]
+        return ranked[:4]
+
+    @classmethod
+    def _fallback_text_matches(cls, chunks, citation: ExplicitLegalCitation):
+        matches = []
+        for chunk in chunks:
+            haystack = cls._reference_haystack(chunk)
+            if any(f"điều {article}" in haystack for article in citation.article_numbers):
+                matches.append(chunk)
+        return matches[:4]
+
+    @staticmethod
+    def _reference_matches_article(reference, article_number: str) -> bool:
+        if RagPipeline._normalize_ref_number(reference.article_number) == article_number:
+            return True
+        haystack = RagPipeline._reference_haystack(reference)
+        return f"điều {article_number}" in haystack
+
+    @staticmethod
+    def _reference_matches_clause(reference, clause_number: str) -> bool:
+        if RagPipeline._normalize_ref_number(reference.clause_number) == clause_number:
+            return True
+        haystack = RagPipeline._reference_haystack(reference)
+        return f"khoản {clause_number}" in haystack or f"{clause_number}." in haystack
+
+    @staticmethod
+    def _reference_matches_point(reference, point_number: str) -> bool:
+        if RagPipeline._normalize_point_label(reference.point_number) == point_number:
+            return True
+        haystack = RagPipeline._reference_haystack(reference)
+        return f"điểm {point_number}" in haystack or f"{point_number})" in haystack
+
+    @staticmethod
+    def _normalize_document_number(value: str | None) -> str:
+        return re.sub(r"\s+", "", value or "").strip(".,;:)").upper()
+
+    @staticmethod
+    def _normalize_ref_number(value: str | None) -> str:
+        return re.sub(r"\s+", "", value or "").strip(".,;:)").lower()
+
+    @staticmethod
+    def _normalize_point_label(value: str | None) -> str:
+        return (value or "").strip().lower()
+
+    @staticmethod
+    def _chunk_index(reference) -> int:
+        suffix = reference.chunk_id.rsplit(":", 1)[-1]
+        try:
+            return int(suffix)
+        except ValueError:
+            return 10**9
 
     def _expand_adjacent_sections(
         self,
@@ -414,7 +622,7 @@ class RagPipeline:
             if classification.startswith("labor.") and self._is_labor_code_2019(candidate):
                 chunks = self.vector_store.get_document_chunks(candidate.document_id, issued_date_lte=as_of_date)
                 expansions.extend(self.vector_store.get_adjacent_chunks(chunks, candidate.chunk_id, window=1))
-                expansions.extend(self._find_required_labor_sources(chunks, question))
+                expansions.extend(self._find_required_labor_sources(chunks, question, classification))
                 continue
             if self._looks_like_article_chunk(candidate):
                 chunks = self.vector_store.get_document_chunks(candidate.document_id, issued_date_lte=as_of_date)
@@ -439,7 +647,7 @@ class RagPipeline:
     ):
         if not self._is_only_home_coowner_issue(question, classification):
             if classification.startswith("labor."):
-                return self._ensure_required_labor_references(references, candidates, question, limit)
+                return self._ensure_required_labor_references(references, candidates, question, classification, limit)
             return references
         required = self._find_required_circular_111_sources(candidates, article_12=True)
         required.extend(self._find_required_circular_111_sources(candidates, article_3=True))
@@ -459,8 +667,26 @@ class RagPipeline:
         kept_optional = [reference for reference in merged if reference.chunk_id not in required_ids]
         return (kept_required + kept_optional)[:limit]
 
-    def _ensure_required_labor_references(self, references, candidates, question: str, limit: int):
-        required = self._find_required_labor_sources(candidates, question)
+    @staticmethod
+    def _ensure_explicit_citation_references(references, explicit_references, limit: int):
+        if not explicit_references:
+            return references
+        by_chunk_id = {reference.chunk_id: reference for reference in references}
+        merged = list(references)
+        for reference in explicit_references:
+            if reference.chunk_id not in by_chunk_id:
+                merged.append(reference)
+                by_chunk_id[reference.chunk_id] = reference
+        if len(merged) <= limit:
+            return merged
+
+        explicit_ids = {reference.chunk_id for reference in explicit_references}
+        pinned = [reference for reference in merged if reference.chunk_id in explicit_ids]
+        optional = [reference for reference in merged if reference.chunk_id not in explicit_ids]
+        return (pinned + optional)[:limit]
+
+    def _ensure_required_labor_references(self, references, candidates, question: str, classification: str, limit: int):
+        required = self._find_required_labor_sources(candidates, question, classification)
         if not required:
             return references
         by_chunk_id = {reference.chunk_id: reference for reference in references}
@@ -477,14 +703,24 @@ class RagPipeline:
         return (kept_required + kept_optional)[:limit]
 
     @classmethod
-    def _find_required_labor_sources(cls, references, question: str):
+    def _find_required_labor_sources(cls, references, question: str, classification: str | None = None):
         lowered = question.lower()
-        wanted_articles = {"35"}
-        if any(term in lowered for term in ["trái luật", "bồi thường", "nửa tháng", "không báo trước"]):
+        resignation_dispute = classification == "labor.resignation" or (
+            any(term in lowered for term in ["nghỉ", "nghỉ việc", "đơn phương", "báo trước", "45 ngày"])
+            and any(term in lowered for term in ["lương", "địa điểm", "nơi làm việc", "bhxh", "bảo hiểm xã hội"])
+        )
+        wanted_articles = {"35", "40", "48", "97"} if resignation_dispute else {"35"}
+        if any(term in lowered for term in ["trái luật", "trái pháp luật", "bồi thường", "nửa tháng", "không báo trước"]):
             wanted_articles.add("40")
-        if any(term in lowered for term in ["giữ lương", "lương tháng cuối", "chốt sổ", "bhxh", "bảo hiểm xã hội"]):
+        if any(
+            term in lowered
+            for term in ["giữ lương", "giữ tiền lương", "lương tháng cuối", "lương cuối", "chốt sổ", "bhxh", "bảo hiểm xã hội"]
+        ):
             wanted_articles.add("48")
-        if any(term in lowered for term in ["trả lương trễ", "trả lương chậm", "trễ hơn", "chậm lương"]):
+        if any(
+            term in lowered
+            for term in ["trả lương trễ", "trả lương chậm", "trễ hơn", "chậm lương", "lương chậm", "trả lương muộn", "lương muộn"]
+        ):
             wanted_articles.add("97")
 
         matches = []
@@ -584,8 +820,12 @@ class RagPipeline:
         return "45/2019/qh14" in haystack or "bộ luật lao động" in haystack
 
     @staticmethod
-    def _labor_required_terms(question: str) -> list[str]:
+    def _labor_required_terms(question: str, classification: str | None = None) -> list[str]:
         lowered = question.lower()
+        resignation_dispute = classification == "labor.resignation" or (
+            any(term in lowered for term in ["nghỉ", "nghỉ việc", "đơn phương", "báo trước", "45 ngày"])
+            and any(term in lowered for term in ["lương", "địa điểm", "nơi làm việc", "bhxh", "bảo hiểm xã hội"])
+        )
         terms = [
             "Bộ luật Lao động",
             "45/2019/QH14",
@@ -595,7 +835,9 @@ class RagPipeline:
             "không được bố trí theo đúng công việc, địa điểm làm việc",
             "không được trả đủ lương hoặc trả lương không đúng thời hạn",
         ]
-        if any(term in lowered for term in ["trái luật", "bồi thường", "nửa tháng", "không báo trước"]):
+        if resignation_dispute or any(
+            term in lowered for term in ["trái luật", "trái pháp luật", "bồi thường", "nửa tháng", "không báo trước"]
+        ):
             terms.extend(
                 [
                     "Điều 40",
@@ -604,7 +846,10 @@ class RagPipeline:
                     "một khoản tiền tương ứng với tiền lương theo hợp đồng lao động trong những ngày không báo trước",
                 ]
             )
-        if any(term in lowered for term in ["giữ lương", "lương tháng cuối", "chốt sổ", "bhxh", "bảo hiểm xã hội"]):
+        if resignation_dispute or any(
+            term in lowered
+            for term in ["giữ lương", "giữ tiền lương", "lương tháng cuối", "lương cuối", "chốt sổ", "bhxh", "bảo hiểm xã hội"]
+        ):
             terms.extend(
                 [
                     "Điều 48",
@@ -614,7 +859,10 @@ class RagPipeline:
                     "bảo hiểm thất nghiệp và trả lại cùng với bản chính giấy tờ khác",
                 ]
             )
-        if any(term in lowered for term in ["trả lương trễ", "trả lương chậm", "trễ hơn", "chậm lương"]):
+        if resignation_dispute or any(
+            term in lowered
+            for term in ["trả lương trễ", "trả lương chậm", "trễ hơn", "chậm lương", "lương chậm", "trả lương muộn", "lương muộn"]
+        ):
             terms.extend(
                 [
                     "Điều 97",

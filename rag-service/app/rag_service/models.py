@@ -43,6 +43,7 @@ class AskResponse(BaseModel):
     classification: str
     references: list[SourceReference]
     retrieval_query: str | None = None
+    retrieval_diagnostics: dict[str, object] | None = None
 
 
 class HealthResponse(BaseModel):

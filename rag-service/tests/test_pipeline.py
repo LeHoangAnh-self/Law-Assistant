@@ -25,6 +25,7 @@ class FakeVectorStore:
         self.payload_terms_seen = []
         self.payload_document_numbers = []
         self.document_chunks_by_id: dict[int, list[SourceReference]] = {}
+        self.document_chunks_by_number: dict[str, list[SourceReference]] = {}
 
     def search(
         self,
@@ -55,6 +56,10 @@ class FakeVectorStore:
     def get_document_chunks(self, document_id: int, issued_date_lte=None, limit: int = 5000):
         self.issued_date_lte = issued_date_lte
         return self.document_chunks_by_id.get(document_id, [])[:limit]
+
+    def get_chunks_by_document_number(self, document_number: str, issued_date_lte=None, limit: int = 5000):
+        self.issued_date_lte = issued_date_lte
+        return self.document_chunks_by_number.get(document_number, [])[:limit]
 
     @staticmethod
     def get_adjacent_chunks(chunks: list[SourceReference], chunk_id: str, window: int = 1):
@@ -104,6 +109,40 @@ def test_pipeline_prefixes_query_with_embedding_instruction() -> None:
 
     assert embedding_model.seen_text == "Instruct: test\nQuery: Văn bản nào còn hiệu lực?"
     assert response.answer == "answer"
+
+
+def test_pipeline_returns_retrieval_diagnostics_for_selected_sources() -> None:
+    labor_article = SourceReference(
+        document_id=139264,
+        chunk_id="139264:25",
+        title="Bộ Luật lao động số 45/2019/QH14",
+        document_number="45/2019/QH14",
+        validity_status="Còn hiệu lực",
+        effective_date="2021-01-01",
+        score=10,
+        text="Điều 35. Người lao động có quyền đơn phương chấm dứt hợp đồng lao động.",
+    )
+
+    class DiagnosticVectorStore(FakeVectorStore):
+        def search(self, _vector, limit, filters, issued_date_lte=None):
+            _ = (limit, filters, issued_date_lte)
+            return [labor_article]
+
+    pipeline = RagPipeline(
+        Settings(embedding_dimension=2, enable_reranker=False),
+        embedding_model=FakeEmbeddingModel(),
+        vector_store=DiagnosticVectorStore(),
+        reranker=FakeReranker(),
+        llm_client=FakeLlmClient(),
+    )
+
+    response = asyncio.run(
+        pipeline.ask(AskRequest(question="Tôi muốn nghỉ việc theo Điều 35 thì sao?", top_k=5))
+    )
+
+    assert response.retrieval_diagnostics
+    assert response.retrieval_diagnostics["authoritative_source_count"] >= 1
+    assert "Đánh giá chất lượng nguồn" in pipeline.llm_client.prompts[0]
 
 
 def test_pipeline_passes_retrieval_cutoff_to_vector_store() -> None:
@@ -312,6 +351,105 @@ def test_pipeline_labor_issue_queries_required_labor_code_articles() -> None:
     assert "45/2019/QH14" in vector_store.payload_document_numbers
     assert "không cần báo trước" in vector_store.payload_terms_seen
     assert "xác nhận thời gian đóng bảo hiểm xã hội" in vector_store.payload_terms_seen
+
+
+def test_pipeline_labor_resignation_pins_required_articles_for_deployment_wording() -> None:
+    embedding_model = FakeEmbeddingModel()
+    vector_store = FakeVectorStore()
+    pipeline = RagPipeline(
+        Settings(embedding_dimension=2),
+        embedding_model=embedding_model,
+        vector_store=vector_store,
+        reranker=FakeReranker(),
+        llm_client=FakeLlmClient(),
+    )
+
+    response = asyncio.run(
+        pipeline.ask(
+            AskRequest(
+                question=(
+                    "Tôi ký hợp đồng lao động không xác định thời hạn, địa điểm làm việc trong hợp đồng là TP.HCM. "
+                    "Công ty yêu cầu tôi sang Bình Dương làm việc nhưng tôi không đồng ý bằng văn bản. "
+                    "Lương bị trả muộn hơn 20 ngày trong 2 tháng liên tiếp nên tôi gửi email nghỉ việc ngay. "
+                    "HR nói tôi nghỉ trái pháp luật, đòi giữ lương cuối và không chốt BHXH."
+                ),
+                top_k=5,
+            )
+        )
+    )
+
+    all_queries = "\n".join(embedding_model.seen_texts)
+    assert response.classification == "labor.resignation"
+    assert "Điều 35 Bộ luật Lao động 2019" in all_queries
+    assert "Điều 40 Bộ luật Lao động 2019" in all_queries
+    assert "Điều 48 Bộ luật Lao động 2019" in all_queries
+    assert "Điều 97 Bộ luật Lao động 2019" in all_queries
+    assert "Điều 35" in vector_store.payload_terms_seen
+    assert "Điều 40" in vector_store.payload_terms_seen
+    assert "Điều 48" in vector_store.payload_terms_seen
+    assert "Điều 97" in vector_store.payload_terms_seen
+    assert "45/2019/QH14" in vector_store.payload_document_numbers
+
+
+def test_pipeline_pins_explicit_document_and_article_citations() -> None:
+    article_8 = SourceReference(
+        document_id=180273,
+        chunk_id="180273:8",
+        title="Nghị định số 219/2025/NĐ-CP",
+        document_number="219/2025/NĐ-CP",
+        article_number="8",
+        legal_path="Chương II > Điều 8. Hồ sơ đề nghị cấp giấy phép lao động",
+        score=0,
+        text="Điều 8. Hồ sơ đề nghị cấp giấy phép lao động. 1. Văn bản đề nghị cấp giấy phép lao động...",
+    )
+    article_18 = SourceReference(
+        document_id=180273,
+        chunk_id="180273:18",
+        title="Nghị định số 219/2025/NĐ-CP",
+        document_number="219/2025/NĐ-CP",
+        article_number="18",
+        clause_number="6",
+        legal_path="Chương IV > Điều 18. Thành phần hồ sơ",
+        score=0,
+        text="Điều 18. Thành phần hồ sơ. 6. Văn bản của người sử dụng lao động tại nước ngoài...",
+    )
+    unrelated = SourceReference(
+        document_id=1,
+        chunk_id="1:1",
+        title="Văn bản khác",
+        document_number="01/2020/NĐ-CP",
+        score=50,
+        text="Không liên quan",
+    )
+
+    class ExplicitCitationVectorStore(FakeVectorStore):
+        def search(self, _vector, limit, filters, issued_date_lte=None):
+            _ = (limit, filters, issued_date_lte)
+            return [unrelated]
+
+    vector_store = ExplicitCitationVectorStore()
+    vector_store.document_chunks_by_number["219/2025/NĐ-CP"] = [article_8, article_18]
+    pipeline = RagPipeline(
+        Settings(embedding_dimension=2, enable_reranker=False),
+        embedding_model=FakeEmbeddingModel(),
+        vector_store=vector_store,
+        reranker=FakeReranker(),
+        llm_client=FakeLlmClient(),
+    )
+
+    response = asyncio.run(
+        pipeline.ask(
+            AskRequest(
+                question="Áp dụng Điều 8 và Điều 18 Nghị định số 219/2025/NĐ-CP như thế nào?",
+                top_k=5,
+            )
+        )
+    )
+
+    chunk_ids = [reference.chunk_id for reference in response.references]
+    assert chunk_ids[:2] == ["180273:8", "180273:18"]
+    assert response.references[0].article_number == "8"
+    assert response.references[1].article_number == "18"
 
 
 def test_pipeline_expands_labor_code_hit_to_articles_35_40_48_97() -> None:
