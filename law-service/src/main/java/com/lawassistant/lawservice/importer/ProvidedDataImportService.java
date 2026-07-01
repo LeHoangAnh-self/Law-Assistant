@@ -9,7 +9,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.avro.Schema;
@@ -21,7 +23,11 @@ import org.apache.parquet.io.LocalInputFile;
 import org.apache.hadoop.conf.Configuration;
 import org.jsoup.Jsoup;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class ProvidedDataImportService {
@@ -34,20 +40,30 @@ public class ProvidedDataImportService {
     private static final Schema CONTEXT_CONTENT_PROJECTION = SchemaBuilder
             .record("context_content_projection")
             .fields()
+            .optionalLong("id")
             .optionalLong("document_id")
             .optionalString("context_type")
             .optionalString("content_text")
+            .optionalString("text")
             .optionalString("content_html")
+            .optionalString("html")
+            .optionalString("content")
             .endRecord();
 
     private final JdbcTemplate jdbcTemplate;
     private final EmbeddingEventPublisher embeddingEventPublisher;
+    private final CacheManager cacheManager;
 
-    public ProvidedDataImportService(JdbcTemplate jdbcTemplate, EmbeddingEventPublisher embeddingEventPublisher) {
+    public ProvidedDataImportService(
+            JdbcTemplate jdbcTemplate,
+            EmbeddingEventPublisher embeddingEventPublisher,
+            CacheManager cacheManager) {
         this.jdbcTemplate = jdbcTemplate;
         this.embeddingEventPublisher = embeddingEventPublisher;
+        this.cacheManager = cacheManager;
     }
 
+    @Transactional(rollbackFor = IOException.class)
     public ProvidedDataImportResult importFrom(Path dataDirectory, boolean publishEmbeddingEvents) throws IOException {
         Path metadata = requiredFile(dataDirectory, "metadata.parquet");
         Path content = optionalFile(dataDirectory, "content.parquet");
@@ -58,14 +74,23 @@ public class ProvidedDataImportService {
                     + " or " + dataDirectory.resolve("context.parquet"));
         }
 
-        long metadataRows = importMetadata(metadata, publishEmbeddingEvents);
+        ImportRows metadataRows = importMetadata(metadata);
         long contentRows = content == null ? importContentFromContext(context) : importContent(content);
-        long relationshipRows = importRelationships(relationships);
+        long relationshipRows = importRelationships(relationships, metadataRows.documentIds());
+        evictDocumentDetailCache(metadataRows.documentIds());
 
-        return new ProvidedDataImportResult(metadataRows, contentRows, relationshipRows, publishEmbeddingEvents);
+        if (publishEmbeddingEvents) {
+            publishEmbeddingEventsAfterCommit(metadataRows.documentIds());
+        }
+
+        return new ProvidedDataImportResult(
+                metadataRows.rowCount(),
+                contentRows,
+                relationshipRows,
+                publishEmbeddingEvents);
     }
 
-    private long importMetadata(Path parquetFile, boolean publishEmbeddingEvents) throws IOException {
+    private ImportRows importMetadata(Path parquetFile) throws IOException {
         String sql = """
                 insert into legal_documents (
                     id, external_source, external_docid, title, document_number, issued_date,
@@ -94,10 +119,12 @@ public class ProvidedDataImportService {
                     application_info = values(application_info),
                     validity_status = values(validity_status),
                     embedding_status = 'PENDING',
+                    indexed_at = null,
                     updated_at = current_timestamp(6)
                 """;
 
         List<Object[]> batch = new ArrayList<>(BATCH_SIZE);
+        Set<Long> documentIds = new LinkedHashSet<>();
         long rows = 0;
         try (var reader = parquetReader(parquetFile)) {
             GenericRecord record;
@@ -142,8 +169,8 @@ public class ProvidedDataImportService {
                         firstText(record, "tinh_trang_hieu_luc", "validity_status")
                 });
                 rows++;
-                if (publishEmbeddingEvents && id != null) {
-                    embeddingEventPublisher.publishDocumentUpdated(id);
+                if (id != null) {
+                    documentIds.add(id);
                 }
                 if (batch.size() == BATCH_SIZE) {
                     jdbcTemplate.batchUpdate(sql, batch);
@@ -154,7 +181,7 @@ public class ProvidedDataImportService {
         if (!batch.isEmpty()) {
             jdbcTemplate.batchUpdate(sql, batch);
         }
-        return rows;
+        return new ImportRows(rows, documentIds);
     }
 
     private long importContent(Path parquetFile) throws IOException {
@@ -237,34 +264,68 @@ public class ProvidedDataImportService {
         return rows;
     }
 
-    private long importRelationships(Path parquetFile) throws IOException {
-        String sql = """
-                insert ignore into legal_document_relationships
+    private long importRelationships(Path parquetFile, Set<Long> importedDocumentIds) throws IOException {
+        String deleteSql = "delete from legal_document_relationships where document_id = ?";
+        String insertSql = """
+                insert into legal_document_relationships
                     (document_id, related_document_id, relationship_type)
                 values (?, ?, ?)
                 """;
 
-        List<Object[]> batch = new ArrayList<>(BATCH_SIZE);
+        List<Object[]> relationshipBatch = new ArrayList<>(BATCH_SIZE);
         long rows = 0;
         try (var reader = parquetReader(parquetFile)) {
             GenericRecord record;
             while ((record = reader.read()) != null) {
-                batch.add(new Object[] {
-                        firstLong(record, "doc_id", "document_id"),
+                Long documentId = firstLong(record, "doc_id", "document_id");
+                relationshipBatch.add(new Object[] {
+                        documentId,
                         firstLong(record, "other_doc_id", "related_document_id"),
                         firstText(record, "relationship", "relationship_type")
                 });
                 rows++;
-                if (batch.size() == BATCH_SIZE) {
-                    jdbcTemplate.batchUpdate(sql, batch);
-                    batch.clear();
-                }
             }
         }
-        if (!batch.isEmpty()) {
-            jdbcTemplate.batchUpdate(sql, batch);
+        List<Object[]> deleteBatch = importedDocumentIds.stream()
+                .filter(id -> id != null)
+                .map(id -> new Object[] {id})
+                .toList();
+        if (!deleteBatch.isEmpty()) {
+            jdbcTemplate.batchUpdate(deleteSql, deleteBatch);
+        }
+        for (List<Object[]> batch : batches(relationshipBatch, BATCH_SIZE)) {
+            jdbcTemplate.batchUpdate(insertSql, batch);
         }
         return rows;
+    }
+
+    private void evictDocumentDetailCache(Set<Long> documentIds) {
+        var cache = cacheManager.getCache("legal-document-detail");
+        if (cache == null) {
+            return;
+        }
+        documentIds.forEach(cache::evict);
+    }
+
+    private void publishEmbeddingEventsAfterCommit(Set<Long> documentIds) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            documentIds.forEach(embeddingEventPublisher::publishDocumentUpdated);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                documentIds.forEach(embeddingEventPublisher::publishDocumentUpdated);
+            }
+        });
+    }
+
+    private static List<List<Object[]>> batches(List<Object[]> rows, int batchSize) {
+        List<List<Object[]>> batches = new ArrayList<>();
+        for (int index = 0; index < rows.size(); index += batchSize) {
+            batches.add(rows.subList(index, Math.min(index + batchSize, rows.size())));
+        }
+        return batches;
     }
 
     private static Path optionalFile(Path directory, String name) {
@@ -415,5 +476,8 @@ public class ProvidedDataImportService {
             return null;
         }
         return Long.parseLong(value);
+    }
+
+    private record ImportRows(long rowCount, Set<Long> documentIds) {
     }
 }

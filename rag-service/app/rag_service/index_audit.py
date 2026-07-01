@@ -110,7 +110,10 @@ def main() -> None:
         print(f"Missing sample: {missing_ids[: args.sample_size]}")
         print("")
         print("To requeue the first missing document manually:")
-        print(f'curl -X POST "http://localhost:8080/api/documents/{missing_ids[0]}/embedding-events"')
+        print(
+            'curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" '
+            f'-X POST "http://localhost:8080/api/documents/{missing_ids[0]}/embedding-events"'
+        )
 
 
 if __name__ == "__main__":

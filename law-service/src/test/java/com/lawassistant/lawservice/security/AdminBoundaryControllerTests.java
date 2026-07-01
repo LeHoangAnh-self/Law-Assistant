@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -52,6 +53,10 @@ class AdminBoundaryControllerTests {
 
         mockMvc.perform(post("/api/documents/42/embedding-events"))
                 .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(patch("/api/documents/42/embedding-status")
+                        .param("status", "INDEXING"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -90,5 +95,15 @@ class AdminBoundaryControllerTests {
         verify(embeddingEventPublisher).publishDocumentUpdated(42L);
         verify(embeddingEventPublisher).publishDocumentUpdated(10L);
         verify(embeddingEventPublisher).publishDocumentUpdated(11L);
+    }
+
+    @Test
+    void authenticatedStatusUpdateSucceeds() throws Exception {
+        mockMvc.perform(patch("/api/documents/42/embedding-status")
+                        .header("X-Admin-Token", "test-admin-token")
+                        .param("status", "INDEXED"))
+                .andExpect(status().isOk());
+
+        verify(documentService).updateEmbeddingStatus(42L, "INDEXED");
     }
 }

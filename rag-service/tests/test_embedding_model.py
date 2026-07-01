@@ -20,6 +20,6 @@ def test_default_embedding_model_is_vietlegal_harrier() -> None:
     assert settings.embedding_query_instruction.startswith("Instruct:")
     assert settings.reranker_model_name == "Qwen/Qwen3-Reranker-0.6B"
     assert settings.llm_model == "luanngo/Qwen3-4B-VietNamese-Legal-Chat"
-    assert settings.qdrant_delete_existing_chunks is False
+    assert settings.qdrant_delete_existing_chunks is True
     assert settings.chunk_size == 1500
     assert settings.chunk_overlap == 200

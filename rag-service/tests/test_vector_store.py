@@ -40,3 +40,55 @@ def test_adjacent_chunks_uses_numeric_chunk_order() -> None:
     adjacent = QdrantVectorStore.get_adjacent_chunks(sorted_chunks, "1:2", window=1)
 
     assert [chunk.chunk_id for chunk in adjacent] == ["1:1", "1:10"]
+
+
+def test_replace_document_chunks_deletes_existing_points_before_upsert() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def get_collections(self):
+            return type("Collections", (), {"collections": []})()
+
+        def create_collection(self, **_kwargs) -> None:
+            self.calls.append("create")
+
+        def delete(self, **kwargs) -> None:
+            self.calls.append("delete")
+            assert kwargs["collection_name"] == "chunks"
+            selector = kwargs["points_selector"]
+            assert selector.filter.must[0].key == "document_id"
+            assert selector.filter.must[0].match.value == 42
+
+        def upsert(self, **kwargs) -> None:
+            self.calls.append("upsert")
+            assert kwargs["collection_name"] == "chunks"
+            assert len(kwargs["points"]) == 1
+
+    store = QdrantVectorStore.__new__(QdrantVectorStore)
+    store.client = FakeClient()
+    store.collection_name = "chunks"
+    store.vector_size = 2
+    store.upsert_batch_size = 64
+    store._collection_ready = True
+
+    count = store.replace_document_chunks(
+        42,
+        [{"chunk_id": "42:0", "document_id": 42}],
+        [[0.1, 0.2]],
+    )
+
+    assert count == 1
+    assert store.client.calls == ["delete", "upsert"]
+
+
+def test_replace_document_chunks_rejects_non_replacement_writes() -> None:
+    store = QdrantVectorStore.__new__(QdrantVectorStore)
+    store._collection_ready = True
+    store.client = object()
+    store.collection_name = "chunks"
+    store.vector_size = 2
+    store.upsert_batch_size = 64
+
+    with pytest.raises(ValueError, match="delete_existing=True"):
+        store.replace_document_chunks(42, [], [], delete_existing=False)

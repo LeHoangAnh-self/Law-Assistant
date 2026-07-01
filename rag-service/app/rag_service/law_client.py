@@ -2,9 +2,15 @@ import httpx
 
 
 class LawServiceClient:
-    def __init__(self, base_url: str, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout: float = 20.0,
+        admin_token: str | None = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.admin_token = admin_token
 
     async def search_documents(
         self,
@@ -54,3 +60,15 @@ class LawServiceClient:
             response = client.get(f"{self.base_url}/api/documents/{document_id}")
             response.raise_for_status()
             return response.json()
+
+    def update_embedding_status_sync(self, document_id: int, status: str) -> None:
+        headers = {}
+        if self.admin_token:
+            headers["X-Admin-Token"] = self.admin_token
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.patch(
+                f"{self.base_url}/api/documents/{document_id}/embedding-status",
+                params={"status": status},
+                headers=headers,
+            )
+            response.raise_for_status()

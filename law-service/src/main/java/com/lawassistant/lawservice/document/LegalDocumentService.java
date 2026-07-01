@@ -81,6 +81,18 @@ public class LegalDocumentService {
     public void evictDetail(Long id) {
     }
 
+    @CacheEvict(cacheNames = "legal-document-detail", key = "#id")
+    @Transactional
+    public void updateEmbeddingStatus(Long id, String status) {
+        if (!List.of("PENDING", "INDEXING", "INDEXED", "FAILED").contains(status)) {
+            throw new IllegalArgumentException("Unsupported embedding status: " + status);
+        }
+        int updated = documentRepository.updateEmbeddingStatus(id, status);
+        if (updated == 0) {
+            throw new EntityNotFoundException("Legal document not found: " + id);
+        }
+    }
+
     private static String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }

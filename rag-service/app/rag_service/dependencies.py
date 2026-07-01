@@ -12,4 +12,8 @@ def get_rag_pipeline() -> RagPipeline:
 
 @lru_cache
 def get_law_service_client() -> LawServiceClient:
-    return LawServiceClient(str(get_settings().law_service_base_url))
+    settings = get_settings()
+    return LawServiceClient(
+        str(settings.law_service_base_url),
+        admin_token=settings.law_service_admin_token,
+    )

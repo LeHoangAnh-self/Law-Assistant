@@ -47,24 +47,26 @@ class QdrantVectorStore:
         document_id: int,
         chunks: list[dict],
         vectors: list[list[float]],
-        delete_existing: bool = False,
+        delete_existing: bool = True,
     ) -> int:
         self.ensure_collection()
-        if delete_existing:
-            self.client.delete(
-                collection_name=self.collection_name,
-                points_selector=qmodels.FilterSelector(
-                    filter=qmodels.Filter(
-                        must=[
-                            qmodels.FieldCondition(
-                                key="document_id",
-                                match=qmodels.MatchValue(value=document_id),
-                            )
-                        ]
-                    )
-                ),
-                wait=True,
-            )
+        if not delete_existing:
+            msg = "replace_document_chunks requires delete_existing=True to avoid stale chunks"
+            raise ValueError(msg)
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=qmodels.FilterSelector(
+                filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="document_id",
+                            match=qmodels.MatchValue(value=document_id),
+                        )
+                    ]
+                )
+            ),
+            wait=True,
+        )
         if not chunks:
             return 0
 

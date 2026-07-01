@@ -58,6 +58,8 @@ http://localhost:8090/documents
 Worker:
 
 ```bash
+export LAW_SERVICE_ADMIN_TOKEN=$LAW_ADMIN_TOKEN
+export QDRANT_DELETE_EXISTING_CHUNKS=true
 python -m celery -A rag_service.worker:celery_app worker --loglevel=info --concurrency=1
 ```
 
@@ -66,6 +68,9 @@ RabbitMQ bridge:
 ```bash
 python -m rag_service.rabbit_bridge
 ```
+
+Failed bridge messages are copied to `law.embedding.update.failed` before the
+original delivery is nacked without requeue.
 
 ## Indexing Flow
 

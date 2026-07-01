@@ -292,6 +292,8 @@ Chạy worker và RabbitMQ bridge ở hai terminal riêng:
 ```bash
 cd /home/lee/Documents/LawAssistant/rag-service
 source .venv/bin/activate
+export LAW_SERVICE_ADMIN_TOKEN=$LAW_ADMIN_TOKEN
+export QDRANT_DELETE_EXISTING_CHUNKS=true
 python -m celery -A rag_service.worker:celery_app worker --loglevel=info --concurrency=1
 ```
 

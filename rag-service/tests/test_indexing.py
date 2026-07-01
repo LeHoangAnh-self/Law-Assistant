@@ -1,3 +1,5 @@
+import httpx
+from qdrant_client.http.exceptions import ResponseHandlingException
 from rag_service.config import Settings
 from rag_service.indexing import DocumentIndexer
 from rag_service.models import SourceReference
@@ -5,6 +7,9 @@ from rag_service.pipeline import RagPipeline
 
 
 class FakeLawClient:
+    def __init__(self) -> None:
+        self.status_updates: list[tuple[int, str]] = []
+
     def get_document_detail_sync(self, document_id: int) -> dict:
         return {
             "document": {
@@ -26,6 +31,9 @@ class FakeLawClient:
             "contentText": "Điều 1. Hiệu lực\nVăn bản này có hiệu lực từ ngày ký.",
         }
 
+    def update_embedding_status_sync(self, document_id: int, status: str) -> None:
+        self.status_updates.append((document_id, status))
+
 
 class FakeEmbeddingModel:
     def __init__(self) -> None:
@@ -39,6 +47,7 @@ class FakeEmbeddingModel:
 class FakeVectorStore:
     def __init__(self) -> None:
         self.payloads: list[dict] = []
+        self.delete_existing = None
 
     def replace_document_chunks(
         self,
@@ -48,18 +57,20 @@ class FakeVectorStore:
         delete_existing: bool = False,
     ) -> int:
         self.payloads = chunks
+        self.delete_existing = delete_existing
         assert document_id == 42
         assert vectors == [[0.1, 0.2] for _ in chunks]
-        assert delete_existing is False
+        assert delete_existing is True
         return len(chunks)
 
 
 def test_indexer_embeds_enriched_retrieval_text_and_stores_legal_metadata() -> None:
     embedding_model = FakeEmbeddingModel()
     vector_store = FakeVectorStore()
+    law_client = FakeLawClient()
     indexer = DocumentIndexer(
         Settings(embedding_dimension=2),
-        law_client=FakeLawClient(),
+        law_client=law_client,
         embedding_model=embedding_model,
         vector_store=vector_store,
     )
@@ -67,6 +78,7 @@ def test_indexer_embeds_enriched_retrieval_text_and_stores_legal_metadata() -> N
     indexed_count = indexer.index_document(42)
 
     assert indexed_count == 1
+    assert law_client.status_updates == [(42, "INDEXING"), (42, "INDEXED")]
     assert embedding_model.seen_texts
     assert "Tiêu đề: Luật mẫu" in embedding_model.seen_texts[0]
     assert "Cơ quan ban hành: Quốc hội" in embedding_model.seen_texts[0]
@@ -107,9 +119,10 @@ def test_indexer_stores_parent_and_child_payloads_with_document_metadata() -> No
 
     embedding_model = FakeEmbeddingModel()
     vector_store = FakeVectorStore()
+    law_client = ClauseLawClient()
     indexer = DocumentIndexer(
         Settings(embedding_dimension=2, chunk_size=500, chunk_overlap=50),
-        law_client=ClauseLawClient(),
+        law_client=law_client,
         embedding_model=embedding_model,
         vector_store=vector_store,
     )
@@ -130,7 +143,10 @@ def test_indexer_stores_parent_and_child_payloads_with_document_metadata() -> No
     assert all(child["parent_article_number"] == "2" for child in children)
     assert all(child["parent_text"] == parent["text"] for child in children)
     assert "Cá nhân cung cấp thông tin" in children[0]["child_text"]
-    assert embedding_model.seen_texts == [payload["retrieval_text"] for payload in vector_store.payloads]
+    assert embedding_model.seen_texts == [
+        payload["retrieval_text"] for payload in vector_store.payloads
+    ]
+    assert law_client.status_updates == [(42, "INDEXING"), (42, "INDEXED")]
 
 
 def test_multiple_child_hits_from_same_article_dedupe_to_one_parent_article() -> None:
@@ -143,9 +159,17 @@ def test_multiple_child_hits_from_same_article_dedupe_to_one_parent_article() ->
         clause_number="1",
         chunk_level="child",
         score=0.91,
-        text="Điều 2. Nghĩa vụ\n1. Cá nhân cung cấp thông tin.\n2. Cơ quan trả lời đúng hạn.",
+        text=(
+            "Điều 2. Nghĩa vụ\n"
+            "1. Cá nhân cung cấp thông tin.\n"
+            "2. Cơ quan trả lời đúng hạn."
+        ),
         child_text="Điều 2. Nghĩa vụ\n1. Cá nhân cung cấp thông tin.",
-        parent_text="Điều 2. Nghĩa vụ\n1. Cá nhân cung cấp thông tin.\n2. Cơ quan trả lời đúng hạn.",
+        parent_text=(
+            "Điều 2. Nghĩa vụ\n"
+            "1. Cá nhân cung cấp thông tin.\n"
+            "2. Cơ quan trả lời đúng hạn."
+        ),
     )
     second = first.model_copy(
         update={
@@ -193,3 +217,53 @@ def test_indexer_passes_qdrant_write_settings(monkeypatch) -> None:
 
     assert captured["timeout"] == 180.0
     assert captured["upsert_batch_size"] == 17
+
+
+def test_indexer_marks_document_failed_when_indexing_raises() -> None:
+    class FailingEmbeddingModel(FakeEmbeddingModel):
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            _ = texts
+            raise RuntimeError("embedding failed")
+
+    law_client = FakeLawClient()
+    indexer = DocumentIndexer(
+        Settings(embedding_dimension=2),
+        law_client=law_client,
+        embedding_model=FailingEmbeddingModel(),
+        vector_store=FakeVectorStore(),
+    )
+
+    try:
+        indexer.index_document(42)
+    except RuntimeError:
+        pass
+
+    assert law_client.status_updates == [(42, "INDEXING"), (42, "FAILED")]
+
+
+def test_indexer_does_not_mark_retryable_qdrant_failure_failed() -> None:
+    class UnavailableVectorStore(FakeVectorStore):
+        def replace_document_chunks(
+            self,
+            document_id: int,
+            chunks: list[dict],
+            vectors: list[list[float]],
+            delete_existing: bool = False,
+        ) -> int:
+            _ = document_id, chunks, vectors, delete_existing
+            raise ResponseHandlingException(httpx.ConnectError("[Errno 111] Connection refused"))
+
+    law_client = FakeLawClient()
+    indexer = DocumentIndexer(
+        Settings(embedding_dimension=2),
+        law_client=law_client,
+        embedding_model=FakeEmbeddingModel(),
+        vector_store=UnavailableVectorStore(),
+    )
+
+    try:
+        indexer.index_document(42)
+    except ResponseHandlingException:
+        pass
+
+    assert law_client.status_updates == [(42, "INDEXING")]

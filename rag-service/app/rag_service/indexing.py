@@ -1,8 +1,21 @@
+import httpx
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+
 from rag_service.chunking import chunk_legal_text
 from rag_service.config import Settings
 from rag_service.embedding import EmbeddingModel
 from rag_service.law_client import LawServiceClient
 from rag_service.vector_store import QdrantVectorStore
+
+RETRYABLE_INDEXING_EXCEPTIONS = (
+    ResponseHandlingException,
+    UnexpectedResponse,
+    httpx.ConnectError,
+    httpx.RemoteProtocolError,
+    httpx.ReadTimeout,
+    TimeoutError,
+    ConnectionError,
+)
 
 
 class DocumentIndexer:
@@ -14,7 +27,10 @@ class DocumentIndexer:
         vector_store: QdrantVectorStore | None = None,
     ) -> None:
         self.settings = settings
-        self.law_client = law_client or LawServiceClient(str(settings.law_service_base_url))
+        self.law_client = law_client or LawServiceClient(
+            str(settings.law_service_base_url),
+            admin_token=settings.law_service_admin_token,
+        )
         self.embedding_model = embedding_model or EmbeddingModel(
             settings.embedding_model_name,
             device=settings.embedding_device,
@@ -30,6 +46,18 @@ class DocumentIndexer:
         )
 
     def index_document(self, document_id: int) -> int:
+        self.update_status(document_id, "INDEXING")
+        try:
+            indexed_count = self._index_document_payload(document_id)
+        except RETRYABLE_INDEXING_EXCEPTIONS:
+            raise
+        except Exception:
+            self.update_status(document_id, "FAILED")
+            raise
+        self.update_status(document_id, "INDEXED")
+        return indexed_count
+
+    def _index_document_payload(self, document_id: int) -> int:
         detail = self.law_client.get_document_detail_sync(document_id)
         document = detail["document"]
         text = detail.get("contentText") or document.get("title") or ""
@@ -88,6 +116,11 @@ class DocumentIndexer:
             vectors,
             delete_existing=self.settings.qdrant_delete_existing_chunks,
         )
+
+    def update_status(self, document_id: int, status: str) -> None:
+        update_status = getattr(self.law_client, "update_embedding_status_sync", None)
+        if update_status is not None:
+            update_status(document_id, status)
 
     @staticmethod
     def _document_context(document: dict) -> str:

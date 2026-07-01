@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -12,6 +13,15 @@ public interface LegalDocumentRepository extends JpaRepository<LegalDocument, Lo
 
     @Query("select d.id from LegalDocument d order by d.id")
     List<Long> findAllIds();
+
+    @Modifying
+    @Query("""
+            update LegalDocument d
+            set d.embeddingStatus = :status,
+                d.indexedAt = case when :status = 'INDEXED' then current_timestamp else d.indexedAt end
+            where d.id = :id
+            """)
+    int updateEmbeddingStatus(@Param("id") Long id, @Param("status") String status);
 
     @Query("""
             select d from LegalDocument d

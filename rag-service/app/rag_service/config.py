@@ -12,10 +12,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     law_service_base_url: AnyHttpUrl = "http://localhost:8080"
+    law_service_admin_token: str | None = None
 
     qdrant_url: AnyHttpUrl = "http://localhost:6333"
     qdrant_collection: str = "legal_document_chunks"
-    qdrant_delete_existing_chunks: bool = False
+    qdrant_delete_existing_chunks: bool = True
     qdrant_timeout_seconds: float = Field(default=120.0, ge=1.0, le=600.0)
     qdrant_upsert_batch_size: int = Field(default=64, ge=1, le=512)
 
@@ -39,7 +40,8 @@ class Settings(BaseSettings):
     embedding_local_files_only: bool = False
     reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
     reranker_query_instruction: str = (
-        "Given a Vietnamese legal question, retrieve relevant legal passages that answer the question\n"
+        "Given a Vietnamese legal question, retrieve relevant legal passages "
+        "that answer the question\n"
         "Query: "
     )
     enable_reranker: bool = True

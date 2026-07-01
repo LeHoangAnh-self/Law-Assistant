@@ -19,7 +19,8 @@ public class AdminTokenInterceptor implements HandlerInterceptor {
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler) throws Exception {
-        if (!HttpMethod.POST.matches(request.getMethod())) {
+        if (!HttpMethod.POST.matches(request.getMethod())
+                && !HttpMethod.PATCH.matches(request.getMethod())) {
             return true;
         }
         if (!adminProperties.hasToken()) {

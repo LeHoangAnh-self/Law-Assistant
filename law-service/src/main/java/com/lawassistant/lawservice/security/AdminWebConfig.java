@@ -20,6 +20,7 @@ public class AdminWebConfig implements WebMvcConfigurer {
                 .addPathPatterns(
                         "/api/imports/provided-data",
                         "/api/documents/embedding-events",
-                        "/api/documents/*/embedding-events");
+                        "/api/documents/*/embedding-events",
+                        "/api/documents/*/embedding-status");
     }
 }
