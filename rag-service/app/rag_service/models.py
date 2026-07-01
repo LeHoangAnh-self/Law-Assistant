@@ -54,6 +54,7 @@ class AskResponse(BaseModel):
     references: list[SourceReference]
     retrieval_query: str | None = None
     retrieval_diagnostics: dict[str, object] | None = None
+    citation_verifier: dict[str, object] | None = None
 
 
 class HealthResponse(BaseModel):

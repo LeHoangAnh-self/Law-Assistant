@@ -89,6 +89,23 @@ class FakeLlmClient:
         return self.answers[-1]
 
 
+def labor_article_35() -> SourceReference:
+    return SourceReference(
+        document_id=139264,
+        chunk_id="139264:25",
+        title="Bộ Luật lao động số 45/2019/QH14",
+        document_number="45/2019/QH14",
+        article_number="35",
+        legal_path="Chương III > Điều 35. Quyền đơn phương chấm dứt hợp đồng lao động",
+        validity_status="Còn hiệu lực",
+        score=10,
+        text=(
+            "Điều 35. Người lao động có quyền đơn phương chấm dứt hợp đồng lao động "
+            "không cần báo trước nếu không được trả đủ lương hoặc trả lương không đúng thời hạn."
+        ),
+    )
+
+
 def test_pipeline_prefixes_query_with_embedding_instruction() -> None:
     embedding_model = FakeEmbeddingModel()
     settings = Settings(
@@ -591,6 +608,75 @@ def test_pipeline_retries_when_answer_looks_truncated() -> None:
     assert response.answer == "Câu trả lời hoàn chỉnh."
     assert len(llm_client.prompts) == 2
     assert "trả lời lại ngắn hơn" in llm_client.prompts[1]
+
+
+def test_pipeline_retries_when_citation_verifier_fails_and_second_answer_succeeds() -> None:
+    article = labor_article_35()
+
+    class LaborVectorStore(FakeVectorStore):
+        def search(self, _vector, limit, filters, issued_date_lte=None):
+            _ = (limit, filters, issued_date_lte)
+            return [article]
+
+    llm_client = FakeLlmClient(
+        [
+            "Điều 999 cho phép người lao động nghỉ ngay khi chậm lương [1].",
+            "Điều 35 cho phép người lao động nghỉ ngay nếu không được trả lương đúng hạn [1].",
+        ]
+    )
+    pipeline = RagPipeline(
+        Settings(embedding_dimension=2, enable_reranker=False),
+        embedding_model=FakeEmbeddingModel(),
+        vector_store=LaborVectorStore(),
+        reranker=FakeReranker(),
+        llm_client=llm_client,
+    )
+
+    response = asyncio.run(
+        pipeline.ask(AskRequest(question="Tôi bị chậm lương, có được nghỉ ngay không?", top_k=5))
+    )
+
+    assert response.answer == (
+        "Điều 35 cho phép người lao động nghỉ ngay nếu không được trả lương đúng hạn [1]."
+    )
+    assert len(llm_client.prompts) == 2
+    assert "Phản hồi kiểm chứng có cấu trúc" in llm_client.prompts[1]
+    assert "Điều 999" in llm_client.prompts[1]
+    assert response.citation_verifier
+    assert response.citation_verifier["passed"] is True
+
+
+def test_pipeline_returns_safe_answer_when_citation_retry_still_fails() -> None:
+    article = labor_article_35()
+
+    class LaborVectorStore(FakeVectorStore):
+        def search(self, _vector, limit, filters, issued_date_lte=None):
+            _ = (limit, filters, issued_date_lte)
+            return [article]
+
+    llm_client = FakeLlmClient(
+        [
+            "Điều 999 cho phép người lao động nghỉ ngay khi chậm lương [1].",
+            "Điều 998 vẫn cho phép người lao động nghỉ ngay khi chậm lương [1].",
+        ]
+    )
+    pipeline = RagPipeline(
+        Settings(embedding_dimension=2, enable_reranker=False),
+        embedding_model=FakeEmbeddingModel(),
+        vector_store=LaborVectorStore(),
+        reranker=FakeReranker(),
+        llm_client=llm_client,
+    )
+
+    response = asyncio.run(
+        pipeline.ask(AskRequest(question="Tôi bị chậm lương, có được nghỉ ngay không?", top_k=5))
+    )
+
+    assert response.answer.startswith("Chưa đủ căn cứ đáng tin cậy")
+    assert len(llm_client.prompts) == 2
+    assert response.citation_verifier
+    assert response.citation_verifier["passed"] is False
+    assert "Điều 998" in response.citation_verifier["invented_references"]
 
 
 def test_valid_as_of_allows_partially_expired_sources_but_excludes_fully_expired() -> None:

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from rag_service.bm25_retriever import BM25Retriever
+from rag_service.citation_verifier import CitationVerifierResult, verify_citations
 from rag_service.config import Settings
 from rag_service.embedding import EmbeddingModel
 from rag_service.hybrid_retriever import HybridRetriever
@@ -181,6 +182,15 @@ class RagPipeline:
                 "đầy đủ, kết thúc sạch, tối đa 650 từ."
             )
         answer = self._strip_user_facing_self_check(answer)
+        verifier_result = verify_citations(answer, references)
+        if not verifier_result.passed:
+            answer = await self.llm_client.generate(
+                self._build_citation_retry_prompt(prompt, answer, verifier_result)
+            )
+            answer = self._strip_user_facing_self_check(answer)
+            verifier_result = verify_citations(answer, references)
+            if not verifier_result.passed:
+                answer = self._safe_insufficient_evidence_answer(verifier_result)
         return AskResponse(
             answer=answer,
             rewritten_query=rewritten_query,
@@ -193,6 +203,7 @@ class RagPipeline:
                 "missing_required_sources": list(retrieval_diagnostics.missing_required_sources),
                 "warnings": list(retrieval_diagnostics.warnings),
             },
+            citation_verifier=verifier_result.as_dict(),
         )
 
     @staticmethod
@@ -1060,3 +1071,36 @@ class RagPipeline:
         if not marker:
             return answer
         return answer[: marker.start()].rstrip()
+
+    @staticmethod
+    def _build_citation_retry_prompt(
+        original_prompt: str,
+        draft_answer: str,
+        verifier_result: CitationVerifierResult,
+    ) -> str:
+        return (
+            f"{original_prompt}\n\n"
+            "Bộ kiểm chứng citation phát hiện câu trả lời nháp chưa đạt. "
+            "Hãy viết lại câu trả lời một lần, chỉ dùng các trích đoạn đã cung cấp, "
+            "giữ hoặc bỏ claim sao cho mọi claim pháp lý đều có citation đúng dạng [n]. "
+            "Không dùng số citation ngoài danh sách nguồn, không nêu văn bản/điều/khoản/điểm "
+            "không xuất hiện trong nguồn truy xuất. Nếu thiếu căn cứ, nói rõ là chưa đủ căn cứ.\n\n"
+            f"Phản hồi kiểm chứng có cấu trúc:\n{verifier_result.as_dict()}\n\n"
+            f"Câu trả lời nháp cần sửa:\n{draft_answer}\n\n"
+            "Trả lời đã sửa:"
+        )
+
+    @staticmethod
+    def _safe_insufficient_evidence_answer(verifier_result: CitationVerifierResult) -> str:
+        problem_summary = "; ".join(verifier_result.errors[:3])
+        if problem_summary:
+            return (
+                "Chưa đủ căn cứ đáng tin cậy để trả lời an toàn từ các trích đoạn đã truy xuất. "
+                "Bản nháp sau kiểm chứng vẫn có citation hoặc căn cứ pháp lý chưa được nguồn "
+                "truy xuất hỗ trợ "
+                f"({problem_summary}). Vui lòng kiểm tra lại nguồn hoặc đặt câu hỏi hẹp hơn."
+            )
+        return (
+            "Chưa đủ căn cứ đáng tin cậy để trả lời an toàn từ các trích đoạn đã truy xuất. "
+            "Vui lòng kiểm tra lại nguồn hoặc đặt câu hỏi hẹp hơn."
+        )
