@@ -97,6 +97,30 @@ curl -X POST "http://localhost:8090/api/rag/ask" \
   -d '{"question":"Văn bản nào quy định về hiệu lực thi hành?","top_k":5}'
 ```
 
+## Evaluate Reranking
+
+The default reranker baseline is `Qwen/Qwen3-Reranker-0.6B`. Evaluate it against the
+government Q&A citation benchmark after Qdrant has been indexed:
+
+```bash
+python -m rag_service.evaluation \
+  --dataset-dir /home/lee/Documents/LawAssistant/data_usable/government_qna \
+  --candidate-k 40 \
+  --rerank-k 10 \
+  --output-json /home/lee/Documents/LawAssistant/data_usable/government_qna/qwen3_reranker_eval.json \
+  --training-jsonl /home/lee/Documents/LawAssistant/data_usable/government_qna/qwen3_reranker_training.jsonl
+```
+
+Reported metrics separate first-stage retrieval from reranking:
+
+- `document_recall_at_candidate_k`: expected document present before reranking.
+- `citation_recall_at_candidate_k`: expected document plus cited article/clause/point present before reranking.
+- `document_mrr_at_k` and `document_ndcg_at_k`: reranked document-level quality.
+- `citation_mrr_at_k`, `citation_ndcg_at_k`, and `exact_citation_hit_at_k`: strict legal citation quality.
+
+The optional `--training-jsonl` output uses `query`, `pos`, `neg`, and `prompt` fields so it can
+seed future reranker fine-tuning when the Q&A dataset is refreshed.
+
 ## Tests
 
 ```bash

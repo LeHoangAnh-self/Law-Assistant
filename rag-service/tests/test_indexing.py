@@ -1,5 +1,7 @@
 from rag_service.config import Settings
 from rag_service.indexing import DocumentIndexer
+from rag_service.models import SourceReference
+from rag_service.pipeline import RagPipeline
 
 
 class FakeLawClient:
@@ -47,7 +49,7 @@ class FakeVectorStore:
     ) -> int:
         self.payloads = chunks
         assert document_id == 42
-        assert vectors == [[0.1, 0.2]]
+        assert vectors == [[0.1, 0.2] for _ in chunks]
         assert delete_existing is False
         return len(chunks)
 
@@ -85,7 +87,78 @@ def test_indexer_embeds_enriched_retrieval_text_and_stores_legal_metadata() -> N
     assert vector_store.payloads[0]["external_source"] == "vanban.chinhphu.vn"
     assert vector_store.payloads[0]["external_docid"] == "123"
     assert vector_store.payloads[0]["article_number"] == "1"
+    assert vector_store.payloads[0]["chunk_level"] == "parent"
+    assert vector_store.payloads[0]["parent_id"] == "42:0"
+    assert vector_store.payloads[0]["parent_article_number"] == "1"
+    assert vector_store.payloads[0]["parent_text"] == vector_store.payloads[0]["text"]
     assert vector_store.payloads[0]["chunking_strategy"] == "legal_structure_v1"
+
+
+def test_indexer_stores_parent_and_child_payloads_with_document_metadata() -> None:
+    class ClauseLawClient(FakeLawClient):
+        def get_document_detail_sync(self, document_id: int) -> dict:
+            detail = super().get_document_detail_sync(document_id)
+            detail["contentText"] = (
+                "Điều 2. Nghĩa vụ\n"
+                "1. Cá nhân cung cấp thông tin.\n"
+                "2. Cơ quan trả lời đúng hạn."
+            )
+            return detail
+
+    embedding_model = FakeEmbeddingModel()
+    vector_store = FakeVectorStore()
+    indexer = DocumentIndexer(
+        Settings(embedding_dimension=2, chunk_size=500, chunk_overlap=50),
+        law_client=ClauseLawClient(),
+        embedding_model=embedding_model,
+        vector_store=vector_store,
+    )
+
+    indexed_count = indexer.index_document(42)
+
+    assert indexed_count == 3
+    parent = vector_store.payloads[0]
+    children = vector_store.payloads[1:]
+    assert parent["chunk_level"] == "parent"
+    assert parent["parent_id"] == parent["chunk_id"]
+    assert parent["parent_article_number"] == "2"
+    assert parent["document_type"] == "Luật"
+    assert [child["chunk_level"] for child in children] == ["child", "child"]
+    assert [child["parent_id"] for child in children] == [parent["chunk_id"], parent["chunk_id"]]
+    assert [child["clause_number"] for child in children] == ["1", "2"]
+    assert all(child["article_number"] == "2" for child in children)
+    assert all(child["parent_article_number"] == "2" for child in children)
+    assert all(child["parent_text"] == parent["text"] for child in children)
+    assert "Cá nhân cung cấp thông tin" in children[0]["child_text"]
+    assert embedding_model.seen_texts == [payload["retrieval_text"] for payload in vector_store.payloads]
+
+
+def test_multiple_child_hits_from_same_article_dedupe_to_one_parent_article() -> None:
+    first = SourceReference(
+        document_id=42,
+        chunk_id="42:1",
+        parent_id="42:0",
+        parent_article_number="2",
+        article_number="2",
+        clause_number="1",
+        chunk_level="child",
+        score=0.91,
+        text="Điều 2. Nghĩa vụ\n1. Cá nhân cung cấp thông tin.\n2. Cơ quan trả lời đúng hạn.",
+        child_text="Điều 2. Nghĩa vụ\n1. Cá nhân cung cấp thông tin.",
+        parent_text="Điều 2. Nghĩa vụ\n1. Cá nhân cung cấp thông tin.\n2. Cơ quan trả lời đúng hạn.",
+    )
+    second = first.model_copy(
+        update={
+            "chunk_id": "42:2",
+            "clause_number": "2",
+            "score": 0.88,
+            "child_text": "Điều 2. Nghĩa vụ\n2. Cơ quan trả lời đúng hạn.",
+        }
+    )
+
+    deduped = RagPipeline._dedupe_parent_article_references([first, second])
+
+    assert deduped == [first]
 
 
 def test_indexer_passes_qdrant_write_settings(monkeypatch) -> None:

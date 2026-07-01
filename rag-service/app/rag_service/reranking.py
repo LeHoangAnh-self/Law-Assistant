@@ -6,9 +6,15 @@ from rag_service.source_policy import authority_score_bonus
 
 
 class CrossEncoderReranker:
-    def __init__(self, model_name: str, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        enabled: bool = True,
+        query_instruction: str | None = None,
+    ) -> None:
         self.model_name = model_name
         self.enabled = enabled
+        self.query_instruction = query_instruction or ""
 
     @cached_property
     def _model(self):
@@ -19,7 +25,8 @@ class CrossEncoderReranker:
     def rerank(self, query: str, references: list[SourceReference], limit: int) -> list[SourceReference]:
         if not self.enabled or len(references) <= 1:
             return self._diversify(self._quality_adjusted(query, references), limit)
-        pairs = [(query, reference.text) for reference in references]
+        rerank_query = self._rerank_query(query)
+        pairs = [(rerank_query, self._rerank_text(reference)) for reference in references]
         scores = self._model.predict(pairs)
         rescored = [
             reference.model_copy(update={"score": float(score)})
@@ -27,6 +34,13 @@ class CrossEncoderReranker:
         ]
         ranked = self._quality_adjusted(query, rescored)
         return self._diversify(ranked, limit)
+
+    @staticmethod
+    def _rerank_text(reference: SourceReference) -> str:
+        return reference.retrieval_text or reference.text
+
+    def _rerank_query(self, query: str) -> str:
+        return f"{self.query_instruction}{query}" if self.query_instruction else query
 
     @classmethod
     def _quality_adjusted(

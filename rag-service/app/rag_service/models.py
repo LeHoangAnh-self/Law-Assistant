@@ -29,12 +29,22 @@ class SourceReference(BaseModel):
     issuing_authority: str | None = None
     scope: str | None = None
     legal_path: str | None = None
+    chunk_level: str | None = None
+    parent_id: str | None = None
+    parent_article_number: str | None = None
     article_number: str | None = None
     clause_number: str | None = None
     point_number: str | None = None
     chunking_strategy: str | None = None
     score: float
+    dense_score: float | None = None
+    bm25_score: float | None = None
+    exact_match_boost: float = 0.0
+    hybrid_score: float | None = None
     text: str
+    retrieval_text: str | None = None
+    child_text: str | None = None
+    parent_text: str | None = None
 
 
 class AskResponse(BaseModel):

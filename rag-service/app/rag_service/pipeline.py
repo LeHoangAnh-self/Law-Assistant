@@ -2,12 +2,15 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
+from rag_service.bm25_retriever import BM25Retriever
 from rag_service.config import Settings
 from rag_service.embedding import EmbeddingModel
+from rag_service.hybrid_retriever import HybridRetriever
 from rag_service.llm import LlmClient
 from rag_service.models import AskRequest, AskResponse
 from rag_service.prompting import build_legal_prompt
 from rag_service.reranking import CrossEncoderReranker
+from rag_service.retrieval import QdrantDenseRetriever, RetrievalQuery
 from rag_service.source_policy import build_retrieval_diagnostics, source_quality_lines
 from rag_service.vector_store import QdrantVectorStore
 
@@ -78,9 +81,16 @@ class RagPipeline:
             settings.qdrant_collection,
             settings.embedding_dimension,
         )
+        self.retriever = HybridRetriever(
+            dense_retriever=QdrantDenseRetriever(self.vector_store, self.embedding_model),
+            lexical_retriever=BM25Retriever(self.vector_store),
+            dense_limit=50,
+            lexical_limit=50,
+        )
         self.reranker = reranker or CrossEncoderReranker(
             settings.reranker_model_name,
             settings.enable_reranker,
+            query_instruction=settings.reranker_query_instruction,
         )
         self.llm_client = llm_client or LlmClient(
             provider=settings.llm_provider,
@@ -139,6 +149,7 @@ class RagPipeline:
             explicit_citation_references,
             limit=request.top_k,
         )
+        references = self._dedupe_parent_article_references(references)[: request.top_k]
         required_source_checklist = self._required_source_checklist(rewritten_query, classification)
         missing_required_sources = self._missing_required_source_labels(
             rewritten_query,
@@ -340,13 +351,12 @@ class RagPipeline:
         as_of_date: date | None,
     ):
         by_chunk_id = {}
-        per_query_limit = max(8, min(self.settings.retrieval_limit, 24))
         for query in retrieval_queries:
             embedding_query = f"{self.settings.embedding_query_instruction}{query}"
             query_vector = self.embedding_model.embed_one(embedding_query)
-            hits = self.vector_store.search(
-                query_vector,
-                limit=per_query_limit,
+            hits = self.retriever.retrieve(
+                RetrievalQuery(text=query, embedding_text=embedding_query, vector=query_vector),
+                limit=self.settings.retrieval_limit,
                 filters=filters,
                 issued_date_lte=as_of_date,
             )
@@ -966,6 +976,25 @@ class RagPipeline:
             if previous is None or candidate.score > previous.score:
                 by_chunk_id[candidate.chunk_id] = candidate
         return sorted(by_chunk_id.values(), key=lambda reference: reference.score, reverse=True)
+
+    @staticmethod
+    def _dedupe_parent_article_references(references):
+        by_parent = {}
+        for reference in references:
+            key = (
+                reference.document_id,
+                reference.parent_id
+                or (
+                    f"article:{reference.parent_article_number or reference.article_number}"
+                    if (reference.parent_article_number or reference.article_number)
+                    else None
+                )
+                or reference.chunk_id,
+            )
+            previous = by_parent.get(key)
+            if previous is None or reference.score > previous.score:
+                by_parent[key] = reference
+        return sorted(by_parent.values(), key=lambda reference: reference.score, reverse=True)
 
     @staticmethod
     def _prefer_valid_as_of(candidates, as_of_date: date | None, top_k: int):

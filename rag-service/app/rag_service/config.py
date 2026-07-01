@@ -37,7 +37,11 @@ class Settings(BaseSettings):
     embedding_device: str = "cpu"
     embedding_batch_size: int = Field(default=16, ge=1, le=256)
     embedding_local_files_only: bool = False
-    reranker_model_name: str = "kiencnt2205/vietnamese-legal-reranker-bge-base"
+    reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
+    reranker_query_instruction: str = (
+        "Given a Vietnamese legal question, retrieve relevant legal passages that answer the question\n"
+        "Query: "
+    )
     enable_reranker: bool = True
 
     chunk_size: int = Field(default=1500, ge=200, le=4000)

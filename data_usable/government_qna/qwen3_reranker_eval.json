@@ -1,0 +1,16 @@
+{
+  "question_count": 1273,
+  "citation_count": 2231,
+  "candidate_k": 40,
+  "rerank_k": 10,
+  "document_recall_at_candidate_k": 0.3774092335275661,
+  "citation_recall_at_candidate_k": 0.20618556701030927,
+  "document_mrr_at_k": 0.12878060233506214,
+  "citation_mrr_at_k": 0.05319630317389168,
+  "document_ndcg_at_k": 0.1687441920374867,
+  "citation_ndcg_at_k": 0.06999582794847357,
+  "exact_citation_hit_at_k": 0.12550425818018826,
+  "avg_retrieval_latency_ms": 304.6718552011107,
+  "avg_rerank_latency_ms": 212.65529511547942,
+  "training_rows_written": 924
+}

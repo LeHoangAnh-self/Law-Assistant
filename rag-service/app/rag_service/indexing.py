@@ -40,9 +40,15 @@ class DocumentIndexer:
             self.settings.chunk_overlap,
             document_context=document_context,
         )
+        chunk_ids = [f"{document_id}:{index}" for index, _ in enumerate(chunks)]
+        parent_ids = {
+            chunk.parent_key: chunk_ids[index]
+            for index, chunk in enumerate(chunks)
+            if chunk.parent_key and chunk.chunk_level == "parent"
+        }
         payloads = [
             {
-                "chunk_id": f"{document_id}:{index}",
+                "chunk_id": chunk_ids[index],
                 "document_id": document_id,
                 "chunk_index": index,
                 "text": chunk.text,
@@ -50,9 +56,14 @@ class DocumentIndexer:
                 "char_start": chunk.char_start,
                 "char_end": chunk.char_end,
                 "legal_path": chunk.legal_path,
+                "chunk_level": chunk.chunk_level,
+                "parent_id": self._parent_id(chunk, chunk_ids[index], parent_ids),
+                "parent_article_number": chunk.parent_article_number,
                 "article_number": chunk.article_number,
                 "clause_number": chunk.clause_number,
                 "point_number": chunk.point_number,
+                "child_text": chunk.child_text,
+                "parent_text": chunk.parent_text,
                 "chunking_strategy": chunk.chunking_strategy,
                 "title": document.get("title"),
                 "document_number": document.get("documentNumber"),
@@ -95,3 +106,13 @@ class DocumentIndexer:
             ("Mã nguồn ngoài", document.get("externalDocid")),
         ]
         return "\n".join(f"{label}: {value}" for label, value in fields if value)
+
+    @staticmethod
+    def _parent_id(chunk, chunk_id: str, parent_ids: dict[str, str]) -> str | None:
+        if chunk.parent_id:
+            return chunk.parent_id
+        if chunk.chunk_level == "parent" and chunk.parent_key:
+            return chunk_id
+        if chunk.parent_key:
+            return parent_ids.get(chunk.parent_key)
+        return None

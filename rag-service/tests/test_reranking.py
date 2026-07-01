@@ -45,6 +45,16 @@ def test_disabled_reranker_diversifies_documents_before_backfill() -> None:
     assert [item.chunk_id for item in result] == ["1:1", "1:2", "2:1", "3:1"]
 
 
+def test_reranker_can_prefix_query_instruction() -> None:
+    reranker = CrossEncoderReranker(
+        "unused",
+        enabled=False,
+        query_instruction="Legal task\nQuery: ",
+    )
+
+    assert reranker._rerank_query("Điều 35 là gì?") == "Legal task\nQuery: Điều 35 là gì?"
+
+
 def test_current_tax_query_demotes_obsolete_high_income_tax_sources() -> None:
     reranker = CrossEncoderReranker("unused", enabled=False)
     obsolete = rich_reference(

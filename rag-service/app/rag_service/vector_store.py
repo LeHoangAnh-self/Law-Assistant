@@ -122,12 +122,18 @@ class QdrantVectorStore:
                 issuing_authority=hit.payload.get("issuing_authority"),
                 scope=hit.payload.get("scope"),
                 legal_path=hit.payload.get("legal_path"),
+                chunk_level=hit.payload.get("chunk_level"),
+                parent_id=hit.payload.get("parent_id"),
+                parent_article_number=hit.payload.get("parent_article_number"),
                 article_number=hit.payload.get("article_number"),
                 clause_number=hit.payload.get("clause_number"),
                 point_number=hit.payload.get("point_number"),
                 chunking_strategy=hit.payload.get("chunking_strategy"),
                 score=float(hit.score),
-                text=hit.payload.get("text", ""),
+                text=self._hydrated_text(hit.payload),
+                retrieval_text=hit.payload.get("retrieval_text"),
+                child_text=hit.payload.get("child_text"),
+                parent_text=hit.payload.get("parent_text"),
             )
             for hit in hits
         ]
@@ -201,6 +207,19 @@ class QdrantVectorStore:
             key=self._chunk_sort_key,
         )
 
+    def scroll_references(
+        self,
+        limit: int,
+        issued_date_lte: date | None = None,
+        filters: dict[str, object] | None = None,
+    ) -> list[SourceReference]:
+        self.ensure_collection()
+        return self._scroll_payloads(
+            limit=limit,
+            issued_date_lte=issued_date_lte,
+            filters=filters,
+        )
+
     @classmethod
     def get_adjacent_chunks(
         cls,
@@ -264,15 +283,27 @@ class QdrantVectorStore:
                 issuing_authority=record.payload.get("issuing_authority"),
                 scope=record.payload.get("scope"),
                 legal_path=record.payload.get("legal_path"),
+                chunk_level=record.payload.get("chunk_level"),
+                parent_id=record.payload.get("parent_id"),
+                parent_article_number=record.payload.get("parent_article_number"),
                 article_number=record.payload.get("article_number"),
                 clause_number=record.payload.get("clause_number"),
                 point_number=record.payload.get("point_number"),
                 chunking_strategy=record.payload.get("chunking_strategy"),
                 score=0.0,
-                text=record.payload.get("text", ""),
+                text=self._hydrated_text(record.payload),
+                retrieval_text=record.payload.get("retrieval_text"),
+                child_text=record.payload.get("child_text"),
+                parent_text=record.payload.get("parent_text"),
             )
             for record in all_records
         ]
+
+    @staticmethod
+    def _hydrated_text(payload: dict) -> str:
+        if payload.get("chunk_level") == "child" and payload.get("parent_text"):
+            return payload["parent_text"]
+        return payload.get("text", "")
 
     @staticmethod
     def _build_filter(

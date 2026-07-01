@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 LEGAL_BOUNDARY_RE = re.compile(
     r"(?m)^(?P<label>Phần|Chương|Mục|Tiểu mục|Điều)\s+"
@@ -21,6 +21,12 @@ class LegalChunk:
     article_number: str | None = None
     clause_number: str | None = None
     point_number: str | None = None
+    chunk_level: str = "parent"
+    parent_key: str | None = None
+    parent_id: str | None = None
+    parent_article_number: str | None = None
+    child_text: str | None = None
+    parent_text: str | None = None
     chunking_strategy: str = "legal_structure_v1"
 
 
@@ -129,18 +135,6 @@ def _split_section(
     section_text = text[section.start:section.end].strip()
     if not section_text:
         return []
-    if len(section_text) <= chunk_size:
-        return [
-            _build_chunk(
-                text=section_text,
-                char_start=section.start,
-                char_end=section.end,
-                legal_path=section.path,
-                article_number=section.number if section.label == "Điều" else None,
-                document_context=document_context,
-            )
-        ]
-
     if section.label == "Điều":
         subordinate_chunks = _subdivide_article(
             text,
@@ -152,6 +146,22 @@ def _split_section(
         if subordinate_chunks:
             return subordinate_chunks
 
+    if len(section_text) <= chunk_size:
+        parent_key = _article_parent_key(section) if section.label == "Điều" else None
+        return [
+            _build_chunk(
+                text=section_text,
+                char_start=section.start,
+                char_end=section.end,
+                legal_path=section.path,
+                article_number=section.number if section.label == "Điều" else None,
+                parent_key=parent_key,
+                parent_article_number=section.number if section.label == "Điều" else None,
+                parent_text=section_text if section.label == "Điều" else None,
+                document_context=document_context,
+            )
+        ]
+
     # Non-article sections usually contain many articles. If a legal heading is oversized,
     # use fixed windows inside that heading while preserving the heading path.
     fixed_chunks = _fixed_window_chunks(
@@ -161,6 +171,9 @@ def _split_section(
         offset=section.start,
         legal_path=section.path,
         article_number=section.number if section.label == "Điều" else None,
+        parent_key=_article_parent_key(section) if section.label == "Điều" else None,
+        parent_article_number=section.number if section.label == "Điều" else None,
+        parent_text=section_text if section.label == "Điều" else None,
         document_context=document_context,
     )
     return fixed_chunks
@@ -174,56 +187,187 @@ def _subdivide_article(
     document_context: str | None,
 ) -> list[LegalChunk]:
     article_text = text[section.start:section.end]
-    clause_matches = list(CLAUSE_BOUNDARY_RE.finditer(article_text))
-    point_matches = list(POINT_BOUNDARY_RE.finditer(article_text))
-    boundaries = clause_matches or point_matches
-    if not boundaries:
-        return []
-
     heading_end = article_text.find("\n")
     heading_prefix = article_text[:heading_end].strip() if heading_end > -1 else section.heading
-    chunks: list[LegalChunk] = []
-    for index, match in enumerate(boundaries):
-        part_start = section.start + match.start()
-        if index + 1 < len(boundaries):
-            part_end = section.start + boundaries[index + 1].start()
-        else:
-            part_end = section.start + len(article_text)
-        part = text[part_start:part_end].strip()
-        if not part:
-            continue
-        if heading_prefix and not part.startswith(heading_prefix):
-            prefixed_part = f"{heading_prefix}\n{part}"
-        else:
-            prefixed_part = part
-        if len(prefixed_part) <= chunk_size:
-            chunks.append(
-                _build_chunk(
-                    text=prefixed_part,
-                    char_start=section.start,
-                    char_end=part_end,
-                    legal_path=section.path,
-                    article_number=section.number,
-                    clause_number=match.group("number") if clause_matches else None,
-                    point_number=match.group("number") if not clause_matches else None,
-                    document_context=document_context,
+    parent_text = article_text.strip()
+    parent_key = _article_parent_key(section)
+    parent_chunk = _build_chunk(
+        text=parent_text,
+        char_start=section.start,
+        char_end=section.end,
+        legal_path=section.path,
+        article_number=section.number,
+        chunk_level="parent",
+        parent_key=parent_key,
+        parent_article_number=section.number,
+        parent_text=parent_text,
+        document_context=document_context,
+    )
+    child_chunks = _article_child_chunks(
+        text=text,
+        section=section,
+        article_text=article_text,
+        heading_prefix=heading_prefix,
+        parent_text=parent_text,
+        parent_key=parent_key,
+        chunk_size=chunk_size,
+        overlap=overlap,
+        document_context=document_context,
+    )
+    if not child_chunks:
+        return []
+    return [parent_chunk, *child_chunks]
+
+
+def _article_child_chunks(
+    *,
+    text: str,
+    section: _Section,
+    article_text: str,
+    heading_prefix: str,
+    parent_text: str,
+    parent_key: str,
+    chunk_size: int,
+    overlap: int,
+    document_context: str | None,
+) -> list[LegalChunk]:
+    clause_matches = list(CLAUSE_BOUNDARY_RE.finditer(article_text))
+    if clause_matches:
+        chunks: list[LegalChunk] = []
+        for index, clause_match in enumerate(clause_matches):
+            clause_start = clause_match.start()
+            clause_end = clause_matches[index + 1].start() if index + 1 < len(clause_matches) else len(article_text)
+            clause_text = article_text[clause_start:clause_end]
+            point_matches = list(POINT_BOUNDARY_RE.finditer(clause_text))
+            if point_matches:
+                for point_index, point_match in enumerate(point_matches):
+                    point_start = clause_start + point_match.start()
+                    point_end = (
+                        clause_start + point_matches[point_index + 1].start()
+                        if point_index + 1 < len(point_matches)
+                        else clause_end
+                    )
+                    chunks.extend(
+                        _build_child_chunks(
+                            text=text,
+                            section=section,
+                            heading_prefix=heading_prefix,
+                            parent_text=parent_text,
+                            parent_key=parent_key,
+                            part_start=section.start + point_start,
+                            part_end=section.start + point_end,
+                            chunk_size=chunk_size,
+                            overlap=overlap,
+                            clause_number=clause_match.group("number"),
+                            point_number=point_match.group("number"),
+                            document_context=document_context,
+                        )
+                    )
+            else:
+                chunks.extend(
+                    _build_child_chunks(
+                        text=text,
+                        section=section,
+                        heading_prefix=heading_prefix,
+                        parent_text=parent_text,
+                        parent_key=parent_key,
+                        part_start=section.start + clause_start,
+                        part_end=section.start + clause_end,
+                        chunk_size=chunk_size,
+                        overlap=overlap,
+                        clause_number=clause_match.group("number"),
+                        point_number=None,
+                        document_context=document_context,
+                    )
                 )
-            )
-            continue
+        return chunks
+
+    point_matches = list(POINT_BOUNDARY_RE.finditer(article_text))
+    chunks = []
+    for index, point_match in enumerate(point_matches):
+        point_start = point_match.start()
+        point_end = point_matches[index + 1].start() if index + 1 < len(point_matches) else len(article_text)
         chunks.extend(
-            _fixed_window_chunks(
-                prefixed_part,
-                chunk_size,
-                overlap,
-                offset=section.start,
-                legal_path=section.path,
-                article_number=section.number,
-                clause_number=match.group("number") if clause_matches else None,
-                point_number=match.group("number") if not clause_matches else None,
+            _build_child_chunks(
+                text=text,
+                section=section,
+                heading_prefix=heading_prefix,
+                parent_text=parent_text,
+                parent_key=parent_key,
+                part_start=section.start + point_start,
+                part_end=section.start + point_end,
+                chunk_size=chunk_size,
+                overlap=overlap,
+                clause_number=None,
+                point_number=point_match.group("number"),
                 document_context=document_context,
             )
         )
     return chunks
+
+
+def _build_child_chunks(
+    *,
+    text: str,
+    section: _Section,
+    heading_prefix: str,
+    parent_text: str,
+    parent_key: str,
+    part_start: int,
+    part_end: int,
+    chunk_size: int,
+    overlap: int,
+    clause_number: str | None,
+    point_number: str | None,
+    document_context: str | None,
+) -> list[LegalChunk]:
+    part = text[part_start:part_end].strip()
+    if not part:
+        return []
+    if heading_prefix and not part.startswith(heading_prefix):
+        prefixed_part = f"{heading_prefix}\n{part}"
+    else:
+        prefixed_part = part
+    if len(prefixed_part) <= chunk_size:
+        return [
+            _build_chunk(
+                text=prefixed_part,
+                char_start=part_start,
+                char_end=part_end,
+                legal_path=section.path,
+                article_number=section.number,
+                clause_number=clause_number,
+                point_number=point_number,
+                chunk_level="child",
+                parent_key=parent_key,
+                parent_article_number=section.number,
+                child_text=prefixed_part,
+                parent_text=parent_text,
+                document_context=document_context,
+            )
+        ]
+
+    child_windows = _fixed_window_chunks(
+        prefixed_part,
+        chunk_size,
+        overlap,
+        offset=part_start,
+        legal_path=section.path,
+        article_number=section.number,
+        clause_number=clause_number,
+        point_number=point_number,
+        chunk_level="child",
+        parent_key=parent_key,
+        parent_article_number=section.number,
+        parent_text=parent_text,
+        document_context=document_context,
+    )
+    return [
+        chunk
+        if chunk.child_text
+        else replace(chunk, child_text=chunk.text)
+        for chunk in child_windows
+    ]
 
 
 def _fixed_window_chunks(
@@ -236,6 +380,10 @@ def _fixed_window_chunks(
     article_number: str | None = None,
     clause_number: str | None = None,
     point_number: str | None = None,
+    chunk_level: str = "parent",
+    parent_key: str | None = None,
+    parent_article_number: str | None = None,
+    parent_text: str | None = None,
     document_context: str | None = None,
 ) -> list[LegalChunk]:
     _validate_chunk_limits(chunk_size, overlap)
@@ -272,6 +420,11 @@ def _fixed_window_chunks(
                     article_number=article_number,
                     clause_number=clause_number,
                     point_number=point_number,
+                    chunk_level=chunk_level,
+                    parent_key=parent_key,
+                    parent_article_number=parent_article_number,
+                    child_text=chunk if chunk_level == "child" else None,
+                    parent_text=parent_text,
                     document_context=document_context,
                 )
             )
@@ -290,6 +443,12 @@ def _build_chunk(
     article_number: str | None = None,
     clause_number: str | None = None,
     point_number: str | None = None,
+    chunk_level: str = "parent",
+    parent_key: str | None = None,
+    parent_id: str | None = None,
+    parent_article_number: str | None = None,
+    child_text: str | None = None,
+    parent_text: str | None = None,
     document_context: str | None = None,
 ) -> LegalChunk:
     legal_location = f"Vị trí pháp lý: {legal_path}" if legal_path else None
@@ -307,4 +466,14 @@ def _build_chunk(
         article_number=article_number,
         clause_number=clause_number,
         point_number=point_number,
+        chunk_level=chunk_level,
+        parent_key=parent_key,
+        parent_id=parent_id,
+        parent_article_number=parent_article_number,
+        child_text=child_text,
+        parent_text=parent_text,
     )
+
+
+def _article_parent_key(section: _Section) -> str:
+    return f"article:{section.number}:{section.start}"
