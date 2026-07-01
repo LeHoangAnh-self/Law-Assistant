@@ -5,6 +5,7 @@ from uuid import NAMESPACE_URL, uuid5
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 
+from rag_service.filters import validate_filter_keys
 from rag_service.models import SourceReference
 
 T = TypeVar("T")
@@ -227,7 +228,10 @@ class QdrantVectorStore:
         chunk_id: str,
         window: int = 1,
     ) -> list[SourceReference]:
-        chunk_index = next((index for index, chunk in enumerate(chunks) if chunk.chunk_id == chunk_id), None)
+        chunk_index = next(
+            (index for index, chunk in enumerate(chunks) if chunk.chunk_id == chunk_id),
+            None,
+        )
         if chunk_index is None:
             return []
         start = max(0, chunk_index - window)
@@ -310,6 +314,7 @@ class QdrantVectorStore:
         filters: dict[str, object],
         issued_date_lte: date | None = None,
     ) -> qmodels.Filter | None:
+        filters = validate_filter_keys(filters)
         conditions = [
             qmodels.FieldCondition(key=key, match=qmodels.MatchValue(value=value))
             for key, value in filters.items()

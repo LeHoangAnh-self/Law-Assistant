@@ -10,7 +10,7 @@ It serves a browser UI and proxies requests to the running RAG API, so the page 
 - Conversation context for follow-up questions in the same chat.
 - Citation cards with retrieved passages and local document links.
 - Local document reader with metadata, search, highlighted cited passage, and relationships.
-- OpenAI API key connection test from the UI.
+- Optional OpenAI API key connection test from the UI.
 - Exportable JSON log for response debugging.
 
 ## Run
@@ -73,7 +73,14 @@ If a model test fails, common causes are:
 
 For local testing without an external model, start `rag-service` with `LLM_PROVIDER=stub`.
 
-The API key field in the UI is only for testing whether a key can reach OpenAI. It is not written to disk by `UI_test` and is not included in exported logs.
+The API key field in the UI is only for testing whether a key can reach OpenAI.
+The backend endpoint is disabled by default; enable it only for local development:
+
+```bash
+export ENABLE_OPENAI_KEY_TEST=true
+```
+
+The key is not written to disk by `UI_test` and is not included in exported logs.
 
 ## Conversation Context
 

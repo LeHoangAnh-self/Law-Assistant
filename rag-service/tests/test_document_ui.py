@@ -111,3 +111,14 @@ def test_document_api_proxies_law_service_search_and_detail() -> None:
     }
     assert detail_response.status_code == 200
     assert detail_response.json()["contentText"] == "Document body"
+
+
+def test_rag_ask_rejects_unknown_filters() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/rag/ask",
+        json={"question": "Van ban nao quy dinh hieu luc?", "filters": {"unknown": "x"}},
+    )
+
+    assert response.status_code == 422

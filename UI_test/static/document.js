@@ -21,6 +21,28 @@ function normalize(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function safeHttpUrl(value) {
+  const url = String(value ?? "").trim();
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function renderSourceLink(documentData) {
+  const safeUrl = safeHttpUrl(documentData.sourceUrl);
+  if (safeUrl) {
+    return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer noopener">External original</a>`;
+  }
+  if (documentData.sourceUrlText) {
+    return `<span class="muted">${escapeHtml(documentData.sourceUrlText)}</span>`;
+  }
+  return '<span class="muted">No external URL</span>';
+}
+
 function metadataRows(documentData) {
   return [
     ["ID", documentData.id],
@@ -197,9 +219,7 @@ async function loadDocument() {
     parsedSections = parseLegalSections(rawContent);
     document.title = documentData.title || `Document ${id}`;
 
-    const sourceLink = documentData.sourceUrl
-      ? `<a href="${escapeHtml(documentData.sourceUrl)}" target="_blank" rel="noreferrer">External original</a>`
-      : '<span class="muted">No external URL</span>';
+    const sourceLink = renderSourceLink(documentData);
 
     documentView.innerHTML = `
       <header class="document-header">

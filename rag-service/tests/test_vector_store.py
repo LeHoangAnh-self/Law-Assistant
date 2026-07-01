@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from rag_service.models import SourceReference
 from rag_service.vector_store import QdrantVectorStore
 
@@ -15,6 +16,11 @@ def test_build_filter_includes_issued_date_cutoff() -> None:
     assert query_filter.must[0].key == "document_type"
     assert query_filter.must[1].key == "issued_date"
     assert query_filter.must[1].range.lte == date(2025, 3, 6)
+
+
+def test_build_filter_rejects_unknown_filter_keys() -> None:
+    with pytest.raises(ValueError, match="Unsupported filter"):
+        QdrantVectorStore._build_filter({"unknown": "x"})
 
 
 def test_batched_splits_items_by_configured_size() -> None:

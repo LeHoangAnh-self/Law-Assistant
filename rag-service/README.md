@@ -73,7 +73,8 @@ python -m rag_service.rabbit_bridge
 2. Ask `law-service` to publish embedding events:
 
 ```bash
-curl -X POST "http://localhost:8080/api/documents/embedding-events"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/documents/embedding-events"
 ```
 
 3. Monitor queue/worker logs.

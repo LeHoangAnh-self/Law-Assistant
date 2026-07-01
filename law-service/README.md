@@ -34,6 +34,7 @@ done
 ## Run Service
 
 ```bash
+export LAW_ADMIN_TOKEN=local-dev-admin-token
 mvn spring-boot:run
 ```
 
@@ -62,13 +63,15 @@ relationships.parquet
 Current import source:
 
 ```bash
-curl -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current_new"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current_new"
 ```
 
 Compatibility source (older path):
 
 ```bash
-curl -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current"
 ```
 
 Verify imported record:
@@ -80,7 +83,8 @@ curl "http://localhost:8080/api/documents/4260"
 Publish embedding events only after import check:
 
 ```bash
-curl -X POST "http://localhost:8080/api/documents/embedding-events"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/documents/embedding-events"
 ```
 
 ## API Examples
@@ -100,8 +104,14 @@ curl "http://localhost:8080/api/documents/4260"
 Single-document embedding event:
 
 ```bash
-curl -X POST "http://localhost:8080/api/documents/4260/embedding-events"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/documents/4260/embedding-events"
 ```
+
+The import and embedding-event endpoints reject requests without `X-Admin-Token`.
+For production-like profiles (`prod`, `production`, or `staging`) the service fails
+fast if the admin token or DB/RabbitMQ credentials are missing or left at local
+defaults such as `law`, `root`, or `password`.
 
 ## Reset Local State
 

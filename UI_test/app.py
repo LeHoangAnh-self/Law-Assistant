@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -11,6 +12,12 @@ from pydantic import BaseModel, Field
 
 
 RAG_API_BASE_URL = os.getenv("RAG_API_BASE_URL", "http://localhost:8090").rstrip("/")
+ENABLE_OPENAI_KEY_TEST = os.getenv("ENABLE_OPENAI_KEY_TEST", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_HISTORY_MESSAGES = 10
 MAX_CONTEXT_CHARS = 2600
@@ -55,6 +62,39 @@ def _build_conversation_context(history: list[dict[str, Any]]) -> str | None:
 
     context = "\n".join(context_lines)
     return context[-MAX_CONTEXT_CHARS:] or None
+
+
+def _safe_http_url(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    url = value.strip()
+    if not url:
+        return None
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return None
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return url
+    return None
+
+
+def _sanitize_document_source_url(data: dict[str, Any]) -> dict[str, Any]:
+    document = data.get("document")
+    if not isinstance(document, dict):
+        return data
+
+    original = document.get("sourceUrl") or document.get("source_url")
+    safe_url = _safe_http_url(original)
+    if safe_url:
+        document["sourceUrl"] = safe_url
+        return data
+
+    document.pop("sourceUrl", None)
+    document.pop("source_url", None)
+    if original:
+        document["sourceUrlText"] = str(original)
+    return data
 
 
 @app.get("/")
@@ -105,11 +145,17 @@ async def get_document(document_id: int) -> dict[str, Any]:
             detail = response.text
         raise HTTPException(status_code=response.status_code, detail=detail)
 
-    return response.json()
+    return _sanitize_document_source_url(response.json())
 
 
 @app.post("/api/openai/test")
 async def test_openai_connection(payload: OpenAiTestPayload) -> dict[str, Any]:
+    if not ENABLE_OPENAI_KEY_TEST:
+        raise HTTPException(
+            status_code=403,
+            detail="OpenAI key test is disabled. Set ENABLE_OPENAI_KEY_TEST=true for local dev.",
+        )
+
     headers = {
         "Authorization": f"Bearer {payload.api_key}",
         "Content-Type": "application/json",

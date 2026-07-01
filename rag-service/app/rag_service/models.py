@@ -3,13 +3,20 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from rag_service.filters import validate_filter_keys
+
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=4000)
     top_k: int = Field(default=8, ge=1, le=20)
-    filters: dict[str, str] = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
     retrieval_cutoff_date: date | None = None
     conversation_context: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("filters")
+    @classmethod
+    def allow_only_supported_filters(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_filter_keys(value)
 
 
 class SourceReference(BaseModel):

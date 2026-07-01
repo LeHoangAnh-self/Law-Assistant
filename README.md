@@ -229,6 +229,7 @@ done
 ### 2. Chạy Law Service
 
 ```bash
+export LAW_ADMIN_TOKEN=local-dev-admin-token
 mvn spring-boot:run
 ```
 
@@ -243,7 +244,8 @@ curl http://localhost:8080/actuator/health
 Chạy khi `law-service` đang bật:
 
 ```bash
-curl -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current_new"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/imports/provided-data?sourceDirectory=../data_usable/current_new"
 ```
 
 Kiểm tra một văn bản đã import:
@@ -302,7 +304,8 @@ python -m rag_service.rabbit_bridge
 Sau đó publish embedding event từ `law-service`:
 
 ```bash
-curl -X POST "http://localhost:8080/api/documents/embedding-events"
+curl -H "X-Admin-Token: $LAW_ADMIN_TOKEN" \
+  -X POST "http://localhost:8080/api/documents/embedding-events"
 ```
 
 Audit độ phủ indexing:
